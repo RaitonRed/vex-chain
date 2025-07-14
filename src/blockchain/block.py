@@ -42,3 +42,18 @@ class Block:
         )
         block.hash = block_data['hash']
         return block
+
+    def is_valid(self, previous_block):
+        if self.index != previous_block.index + 1:
+            return False
+            
+        if self.previous_hash != previous_block.hash:
+            return False
+            
+        if self.hash != self.calculate_hash():
+            return False
+            
+        if not self.hash.startswith('0' * 3):
+            return False
+            
+        return True
