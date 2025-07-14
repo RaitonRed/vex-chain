@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from blockchain.block import Block
+from src.blockchain.block import Block
 from urllib.parse import urlparse
 
 CHAIN_FILE = "data/chain.json"
