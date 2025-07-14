@@ -1,8 +1,14 @@
 import os
 import json
 import requests
+import time
 from src.blockchain.block import Block
 from urllib.parse import urlparse
+from src.utils.database import (
+    init_db, save_block, get_block, 
+    get_last_block, get_full_chain, get_chain_length,
+    add_node, get_nodes, replace_chain
+)
 
 CHAIN_FILE = "data/chain.json"
 
@@ -12,10 +18,19 @@ class Blockchain:
         self.nodes = set()
         self.load_chain()
 
+        # Gensis Block
+        if not self.chain:
+            self.create_genesis_block()
+            self.chain = get_full_chain()
+
     def create_genesis_block(self):
-        genesis = Block(0, {"type": "genesis"}, "0")
-        self.chain.append(genesis)
-        self.save_chain()
+        genesis_data = {
+            "type": "genesis",
+            "message": "Initial block of StorageChain",
+            "timestamp": time.time()
+        }
+        genesis = Block(0, genesis_data, "0")
+        save_block(genesis)
 
     def get_last_block(self):
         return self.chain[-1]
