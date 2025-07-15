@@ -1,59 +1,59 @@
 import json
 import hashlib
 import time
+from dataclasses import dataclass, field
+from typing import List
+from cryptography.fernet import Fernet
+from src.utils.logger import logger
 
+@dataclass
 class Block:
-    def __init__(self, index, data, previous_hash, timestamp=None, nonce=0):
-        self.index = index
-        self.timestamp = timestamp or time.time()
-        self.data = data
-        self.previous_hash = previous_hash
-        self.nonce = nonce
+    index: int
+    timestamp: float
+    transactions: List['Transaction']
+    previous_hash: str
+    nonce: int = 0
+    difficulty: int = 4
+    hash: str = field(init=False)
+    transactions_hash: str = field(init=False)
+
+    def __post_init__(self):
+        self.timestamp = self.timestamp or time.time()
+        self.transactions_hash = self.calculate_transactions_hash()
         self.hash = self.calculate_hash()
 
-    def calculate_hash(self):
-        block_string = json.dumps({
+    def calculate_transactions_hash(self) -> str:
+        """محاسبه هش ترکیبی تمام تراکنش‌های بلاک"""
+        if not self.transactions:
+            return hashlib.sha256(b'').hexdigest()
+        tx_hashes = [tx.tx_hash for tx in self.transactions]
+        return hashlib.sha256(''.join(tx_hashes).encode()).hexdigest()
+
+    def calculate_hash(self) -> str:
+        """محاسبه هش بلاک با استفاده از تمام فیلدهای مهم"""
+        block_data = {
             'index': self.index,
             'timestamp': self.timestamp,
-            'data': self.data,
+            'transactions_hash': self.transactions_hash,
             'previous_hash': self.previous_hash,
-            'nonce': self.nonce
-        }, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+            'nonce': self.nonce,
+            'difficulty': self.difficulty
+        }
+        return hashlib.sha256(
+            json.dumps(block_data, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """تبدیل بلاک به دیکشنری برای ذخیره در دیتابیس"""
         return {
             'index': self.index,
             'timestamp': self.timestamp,
-            'data': self.data,
             'previous_hash': self.previous_hash,
             'nonce': self.nonce,
-            'hash': self.hash
+            'hash': self.hash,
+            'difficulty': self.difficulty
         }
 
-    @staticmethod
-    def from_dict(block_data):
-        block = Block(
-            index=block_data['index'],
-            data=block_data['data'],
-            previous_hash=block_data['previous_hash'],
-            timestamp=block_data['timestamp'],
-            nonce=block_data['nonce']
-        )
-        block.hash = block_data['hash']
-        return block
-
-    def is_valid(self, previous_block):
-        if self.index != previous_block.index + 1:
-            return False
-            
-        if self.previous_hash != previous_block.hash:
-            return False
-            
-        if self.hash != self.calculate_hash():
-            return False
-            
-        if not self.hash.startswith('0' * 3):
-            return False
-            
-        return True
+    def __repr__(self) -> str:
+        return (f"<Block index={self.index}, hash={self.hash[:10]}..., "
+                f"txs={len(self.transactions)}, nonce={self.nonce}>")

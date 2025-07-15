@@ -1,150 +1,160 @@
-import os
-import json
-import requests
-import time
+from typing import List, Optional
 from src.blockchain.block import Block
-from urllib.parse import urlparse
-from src.utils.database import (
-    init_db, save_block, get_block, 
-    get_last_block, get_full_chain, get_chain_length,
-    add_node, get_nodes, replace_chain
-)
-
-CHAIN_FILE = "data/chain.json"
+from src.blockchain.transaction import Transaction
+from src.blockchain.consensus import Consensus
+from src.blockchain.repositories import BlockRepository, TransactionRepository
+from src.utils.logger import logger
+import os
 
 class Blockchain:
-    def __init__(self):
+    def __init__(self, difficulty: int = 4):
+        self.difficulty = difficulty
         self.chain = []
-        self.nodes = set()
-        self.load_chain()
+        
+        try:
+            # اطمینان از وجود دیتابیس
+            from src.utils.database import init_db
+            init_db()
+            
+            self.chain = self.load_chain()
+            if not self.chain:
+                self._initialize_new_chain()
+        except Exception as e:
+            logger.error(f"Chain initialization failed: {e}")
+            self._initialize_new_chain()
 
-        # Gensis Block
-        if not self.chain:
-            self.create_genesis_block()
-            self.chain = get_full_chain()
+    def _initialize_new_chain(self):
+        """مقداردهی اولیه یک زنجیره جدید"""
+        logger.info("Initializing new blockchain")
+        try:
+            # ایجاد بلاک جنسیس
+            genesis_block = self._create_genesis_block()
+            self.chain = [genesis_block]
+            logger.info("New blockchain initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize new chain: {e}")
+            raise RuntimeError("Failed to initialize blockchain") from e
 
-    def create_genesis_block(self):
-        genesis_data = {
-            "type": "genesis",
-            "message": "Initial block of StorageChain",
-            "timestamp": time.time()
-        }
-        genesis = Block(0, genesis_data, "0")
-        save_block(genesis)
+    def _create_genesis_block(self) -> Block:
+        """ایجاد بلاک جنسیس"""
+        genesis_tx = Transaction(
+            sender="0",
+            recipient="0",
+            amount=0,
+            data={"type": "genesis", "message": "Initial block of the chain"}
+        )
+        
+        genesis_block = Block(
+            index=0,
+            timestamp=0,
+            transactions=[genesis_tx],
+            previous_hash="0",
+            difficulty=self.difficulty
+        )
+        
+        # اثبات کار برای بلاک جنسیس
+        genesis_block = Consensus.proof_of_work(genesis_block)
+        
+        # ذخیره در دیتابیس
+        try:
+            block_id = BlockRepository.save_block(genesis_block)
+            TransactionRepository.save_transaction(genesis_tx, block_id)
+            logger.info(f"Genesis block created with hash: {genesis_block.hash}")
+            return genesis_block
+        except Exception as e:
+            logger.error(f"Failed to save genesis block: {e}")
+            raise
 
-    def get_last_block(self):
-        return self.chain[-1]
+    def load_chain(self) -> List[Block]:
+        """بارگذاری زنجیره از دیتابیس"""
+        chain = []
+        block_count = BlockRepository.get_block_count()
+        
+        for index in range(block_count):
+            block = BlockRepository.get_block_by_index(index)
+            if not block:
+                logger.error(f"Invalid block at index {index}")
+                return []
+                
+            chain.append(block)
+        
+        # اعتبارسنجی زنجیره بارگذاری شده
+        if not chain or not Consensus.is_chain_valid(chain):
+            logger.error("Loaded chain is invalid")
+            return []
+            
+        logger.info(f"Successfully loaded chain with {len(chain)} blocks")
+        return chain
 
-    def add_block(self, data):
+    def add_block(self, transactions: List[Transaction]) -> Optional[Block]:
+        """اضافه کردن بلاک جدید به زنجیره"""
+        if not transactions:
+            logger.warning("Cannot add empty block")
+            return None
+            
         last_block = self.get_last_block()
         if not last_block:
-            raise Exception("Blockchain not initialized")
-        
+            logger.error("Chain not initialized")
+            return None
+            
+        # ایجاد بلاک جدید
         new_block = Block(
             index=last_block.index + 1,
-            data=data,
-            previous_hash=last_block.hash
+            timestamp=None,
+            transactions=transactions,
+            previous_hash=last_block.hash,
+            difficulty=self.difficulty
         )
-
-        new_block = self.proof_of_work(new_block)
-
-        save_block(new_block)
-        self.chain.append(new_block)
-
-        return new_block
-
-    def proof_of_work(self, block, difficulty=3):
-        start_time = time.time()
-        print(f"Mining block #{block.index}...")
         
-        while not block.hash.startswith('0' * difficulty):
-            block.nonce += 1
-            block.hash = block.calculate_hash()
+        # انجام اثبات کار
+        new_block = Consensus.proof_of_work(new_block)
         
-        mining_time = time.time() - start_time
-        print(f"Block mined in {mining_time:.2f}s | Hash: {block.hash}")
-        return block
-
-    def save_chain(self):
-        os.makedirs("data", exist_ok=True)
-        with open(CHAIN_FILE, "w") as f:
-            json.dump([b.to_dict() for b in self.chain], f, indent=2)
-
-    def load_chain(self):
-        if not os.path.exists(CHAIN_FILE):
-            self.create_genesis_block()
-            return
-        with open(CHAIN_FILE, "r") as f:
-            data = json.load(f)
-            self.chain = [Block.from_dict(b) for b in data]
-
-    def register_node(self, address):
-        parsed_url = urlparse(address)
-        if not parsed_url.netloc:
-            raise ValueError("Invalid node address")
-        add_node(parsed_url.netloc)
-
-    def chain_validate(self, chain=None):
-        chain = chain or self.chain
-        if not chain:
-            return False
+        # ذخیره در دیتابیس
+        try:
+            block_id = BlockRepository.save_block(new_block)
+            TransactionRepository.save_transactions_bulk(transactions, block_id)
             
-        genesis = chain[0]
-        if genesis.index != 0 or genesis.previous_hash != "0":
-            return False
-            
-        for i in range(1, len(chain)):
-            current = chain[i]
-            previous = chain[i-1]
-            
-            if current.index != previous.index + 1:
-                return False
-                
-            if current.previous_hash != previous.hash:
-                return False
-                
-            if current.hash != current.calculate_hash():
-                return False
-                
-            if not current.hash.startswith('0' * 3):
-                return False
-                
-        return True
-    
-    def resolve_conflicts(self):
-        nodes = get_nodes()
-        if not nodes:
-            return False
-            
+            # اضافه کردن به زنجیره در حافظه
+            self.chain.append(new_block)
+            logger.info(f"Block #{new_block.index} added to chain")
+            return new_block
+        except Exception as e:
+            logger.error(f"Failed to save block: {e}")
+            return None
+
+    def get_last_block(self) -> Optional[Block]:
+        """دریافت آخرین بلاک زنجیره"""
+        if not self.chain:
+            return None
+        return self.chain[-1]
+
+    def is_chain_valid(self) -> bool:
+        """اعتبارسنجی زنجیره فعلی"""
+        return Consensus.is_chain_valid(self.chain)
+
+    def resolve_conflicts(self, nodes: List[str]) -> bool:
+        """حل تعارضات با نودهای دیگر (طولانی‌ترین زنجیره معتبر)"""
+        logger.info("Resolving conflicts with network nodes...")
+        
         new_chain = None
-        max_length = len(self.chain)
-
-        for node in nodes:
-            try:
-                response = requests.get(f'http://{node}/chain', timeout=3)
-                if response.status_code == 200:
-                    chain_data = response.json().get('chain', [])
-                    if len(chain_data) > max_length:
-                        chain = []
-                        for block_data in chain_data:
-                            chain.append(Block(
-                                index=block_data['index'],
-                                timestamp=block_data['timestamp'],
-                                data=block_data['data'],
-                                previous_hash=block_data['previous_hash'],
-                                nonce=block_data['nonce'],
-                                hash=block_data['hash']
-                            ))
-                        
-                        if self.is_chain_valid(chain):
-                            new_chain = chain
-                            max_length = len(chain)
-            except (requests.RequestException, ValueError, KeyError):
-                continue
+        max_cumulative_diff = Consensus.cumulative_difficulty(self.chain)
         
-        if new_chain:
-            replace_chain(new_chain)
-            self.chain = new_chain
-            return True
-            
+        # در اینجا معمولاً با نودهای دیگر ارتباط برقرار می‌کنیم
+        # برای سادگی، فرض می‌کنیم زنجیره‌های دیگر را دریافت کرده‌ایم
+        
+        # اگر زنجیره جدیدی با سختی تجمعی بیشتر پیدا شد
+        if new_chain and Consensus.is_chain_valid(new_chain):
+            if Consensus.cumulative_difficulty(new_chain) > max_cumulative_diff:
+                self.chain = new_chain
+                logger.info("Chain replaced with longer valid chain")
+                return True
+                
+        logger.info("Current chain remains authoritative")
         return False
+
+    def get_blocks_paginated(self, page: int = 1, per_page: int = 10) -> List[Block]:
+        """دریافت بلاک‌ها به صورت صفحه‌بندی شده"""
+        return BlockRepository.get_blocks_paginated(page, per_page)
+
+    def __repr__(self) -> str:
+        return f"<Blockchain length={len(self.chain)}, last_block={self.get_last_block()}>"

@@ -1,74 +1,103 @@
 from flask import Flask, request, jsonify
-from blockchain.chain import Blockchain
+from src.blockchain.chain import Blockchain
+from src.blockchain.transaction import Transaction
+from src.blockchain.repositories import BlockRepository, TransactionRepository
+from src.utils.logger import logger
 
 app = Flask(__name__)
 blockchain = Blockchain()
 
-@app.route("/", methods=["GET"])
+@app.route('/')
 def home():
-    return jsonify({"message": "ChainNet API is running"})
-
-@app.route("/add", methods=["POST"])
-def add_data():
-    data = request.json
-    if not data:
-        return jsonify({"error": "No Data sent"}), 400
-
-    block = blockchain.add_block(data)
     return jsonify({
-        "message": "✅ Data saved!",
-        "index": block.index,
-        "hash": block.hash
-    }), 201
-
-@app.route("/chain", methods=["GET"])
-def get_chain():
-    return jsonify({
-        "length": len(blockchain.chain),
-        "chain": [b.to_dict() for b in blockchain.chain]
+        'status': 'running',
+        'chain_length': len(blockchain.chain),
+        'last_block': blockchain.get_last_block().index if blockchain.chain else None,
+        'difficulty': blockchain.difficulty
     })
 
-@app.route("/block/<int:index>", methods=["GET"])
-def get_block(index):
-    if index >= len(blockchain.chain):
-        return jsonify({"error": "block not found"}), 404
+@app.route('/blocks', methods=['GET'])
+def get_blocks():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    blocks = blockchain.get_blocks_paginated(page, per_page)
+    return jsonify({
+        'blocks': [{
+            'index': block.index,
+            'hash': block.hash,
+            'previous_hash': block.previous_hash,
+            'timestamp': block.timestamp,
+            'transaction_count': len(block.transactions)
+        } for block in blocks]
+    })
 
-    block = blockchain.chain[index]
-    return jsonify(block.to_dict())
+@app.route('/blocks/<int:index>', methods=['GET'])
+def get_block(index: int):
+    block = BlockRepository.get_block_by_index(index)
+    if not block:
+        return jsonify({'error': 'Block not found'}), 404
+        
+    return jsonify({
+        'index': block.index,
+        'hash': block.hash,
+        'previous_hash': block.previous_hash,
+        'timestamp': block.timestamp,
+        'nonce': block.nonce,
+        'difficulty': block.difficulty,
+        'transactions': [{
+            'tx_hash': tx.tx_hash,
+            'sender': tx.sender,
+            'recipient': tx.recipient,
+            'amount': tx.amount
+        } for tx in block.transactions]
+    })
 
-@app.route('/nodes/register', methods=['POST'])
-def register_nodes():
-    values = request.get_json()
-    nodes = values.get('nodes')
-    
-    if nodes is None:
-        return jsonify({"error": "Please supply a valid list of nodes"}), 400
-    
-    for node in nodes:
-        blockchain.register_node(node)
-    
-    response = {
-        'message': 'New nodes have been added',
-        'total_nodes': list(blockchain.nodes),
-    }
-    return jsonify(response), 201
+@app.route('/transactions', methods=['POST'])
+def add_transaction():
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+        
+    try:
+        tx = Transaction(
+            sender=data.get('sender'),
+            recipient=data.get('recipient'),
+            amount=data.get('amount'),
+            data=data.get('data', {})
+        )
+        
+        # در یک پیاده‌سازی واقعی، اینجا تراکنش به mempool اضافه می‌شود
+        # و بعداً در بلاک جدید قرار می‌گیرد
+        
+        return jsonify({
+            'status': 'success',
+            'tx_hash': tx.tx_hash
+        }), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-@app.route('/nodes/resolve', methods=['GET'])
-def consensus():
-    replaced = blockchain.resolve_conflicts()
+@app.route('/mine', methods=['POST'])
+def mine_block():
+    # در یک پیاده‌سازی واقعی، تراکنش‌ها از mempool گرفته می‌شوند
+    dummy_tx = Transaction(
+        sender="network",
+        recipient="miner",
+        amount=1.0,
+        data={"type": "reward", "message": "Block mining reward"}
+    )
     
-    if replaced:
-        response = {
-            'message': 'Our chain was replaced',
-            'new_chain': [b.to_dict() for b in blockchain.chain]
+    new_block = blockchain.add_block([dummy_tx])
+    if not new_block:
+        return jsonify({'error': 'Failed to mine block'}), 500
+        
+    return jsonify({
+        'status': 'success',
+        'block': {
+            'index': new_block.index,
+            'hash': new_block.hash
         }
-    else:
-        response = {
-            'message': 'Our chain is authoritative',
-            'chain': [b.to_dict() for b in blockchain.chain]
-        }
-    
-    return jsonify(response), 200
+    }), 201
 
-if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
