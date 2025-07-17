@@ -1,6 +1,8 @@
 from typing import List
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 
 class Consensus:
@@ -69,3 +71,19 @@ class Consensus:
                 return False
                 
         return True
+
+
+class ValidatorRegistry:
+    """رجیستری برای مدیریت کلیدهای عمومی ولیدیتورها"""
+    _validators = {}
+    
+    @classmethod
+    def add_validator(cls, address: str, public_key_pem: str):
+        cls._validators[address] = public_key_pem
+    
+    @classmethod
+    def get_public_key(cls, address: str) -> ec.EllipticCurvePublicKey:
+        public_key_pem = cls._validators.get(address)
+        if not public_key_pem:
+            raise ValueError(f"Validator {address} not registered")
+        return load_pem_public_key(public_key_pem.encode())

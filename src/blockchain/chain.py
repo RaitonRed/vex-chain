@@ -4,6 +4,9 @@ from src.blockchain.transaction import Transaction
 from src.blockchain.consensus import Consensus
 from src.blockchain.repositories import BlockRepository, TransactionRepository
 from src.utils.logger import logger
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from src.blockchain.consensus import ValidatorRegistry
 import os
 
 class Blockchain:
@@ -86,7 +89,7 @@ class Blockchain:
         logger.info(f"Successfully loaded chain with {len(chain)} blocks")
         return chain
 
-    def add_block(self, transactions: List[Transaction]) -> Optional[Block]:
+    def add_block(self, transactions: List[Transaction], validator_private_key: ec.EllipticCurvePrivateKey):
         """اضافه کردن بلاک جدید به زنجیره"""
         if not transactions:
             logger.warning("Cannot add empty block")
@@ -108,6 +111,15 @@ class Blockchain:
         
         # انجام اثبات کار
         new_block = Consensus.proof_of_work(new_block)
+
+        new_block.validator = self.get_validator_address(validator_private_key)
+        new_block.sign_block(validator_private_key)
+
+        public_key_pem = validator_private_key.public_key().public_bytes(
+            Encoding.PEM,
+            PublicFormat.SubjectPublicKeyInfo
+        ).decode()
+        ValidatorRegistry.add_validator(new_block.validator, public_key_pem)
         
         # ذخیره در دیتابیس
         try:
