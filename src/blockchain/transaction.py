@@ -1,9 +1,13 @@
 import json
 import hashlib
 import time
+import binascii
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.exceptions import InvalidSignature
 from src.utils.logger import logger
 
 @dataclass
@@ -32,21 +36,32 @@ class Transaction:
             json.dumps(tx_data, sort_keys=True).encode()
         ).hexdigest()
 
-    def sign(self, private_key: str) -> None:
-        """امضای تراکنش با کلید خصوصی"""
-        cipher_suite = Fernet(private_key)
-        self.signature = cipher_suite.encrypt(self.tx_hash.encode()).decode()
+    def sign(self, private_key: ec.EllipticCurvePrivateKey) -> None:
+        """امضای تراکنش با کلید خصوصی ECDSA"""
+        try:
+            signature = private_key.sign(
+                self.tx_hash.encode(),
+                ec.ECDSA(hashes.SHA256())
+            )
+            self.signature = binascii.hexlify(signature).decode()
+        except Exception as e:
+            logger.error(f"Transaction signing failed: {e}")
+            raise
 
-    def verify_signature(self, public_key: str) -> bool:
-        """اعتبارسنجی امضای تراکنش"""
+    def verify_signature(self, public_key: ec.EllipticCurvePublicKey) -> bool:
+        """اعتبارسنجی امضای تراکنش با کلید عمومی"""
         if not self.signature:
             return False
             
         try:
-            cipher_suite = Fernet(public_key)
-            decrypted = cipher_suite.decrypt(self.signature.encode()).decode()
-            return decrypted == self.tx_hash
-        except Exception as e:
+            signature_bytes = binascii.unhexlify(self.signature)
+            public_key.verify(
+                signature_bytes,
+                self.tx_hash.encode(),
+                ec.ECDSA(hashes.SHA256())
+            )
+            return True
+        except (InvalidSignature, ValueError, TypeError) as e:
             logger.error(f"Signature verification failed: {e}")
             return False
 

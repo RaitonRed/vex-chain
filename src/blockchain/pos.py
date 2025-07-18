@@ -1,6 +1,5 @@
 import random
 from src.blockchain.block import Block
-from src.blockchain.t
 
 class ProofOfStake:
     def __init__(self):
@@ -25,4 +24,4 @@ class ProofOfStake:
     
     def validate_block(self, block: Block, validator: str) -> bool:
         """اعتبارسنجی بلاک توسط ولیدیتور"""
-        return block.validator == validator and verify_signature(block.signature)
+        return block.validator == validator and Block.verify_signature(block.signature)

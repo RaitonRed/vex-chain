@@ -1,8 +1,6 @@
 from typing import List
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 
 class Consensus:
@@ -11,26 +9,23 @@ class Consensus:
     @staticmethod
     def validate_block(block: Block, previous_block: Block) -> bool:
         """اعتبارسنجی کامل یک بلاک"""
-        # 1. بررسی صحت هش بلاک
         if block.hash != block.calculate_hash():
             logger.error(f"Invalid block hash for block {block.index}")
             return False
             
-        # 2. بررسی اثبات کار
         if not block.hash.startswith('0' * block.difficulty):
             logger.error(f"PoW validation failed for block {block.index}")
             return False
             
-        # 3. بررسی ارتباط با بلاک قبلی
         if block.previous_hash != previous_block.hash:
             logger.error(f"Previous hash mismatch in block {block.index}")
             return False
             
-        # 4. بررسی تراکنش‌ها
         if not all(tx.tx_hash == tx.calculate_hash() for tx in block.transactions):
             logger.error(f"Invalid transaction hash in block {block.index}")
             return False
             
+        # تاخیر در بررسی امضا تا زمان نیاز
         return True
 
     @staticmethod
@@ -71,19 +66,3 @@ class Consensus:
                 return False
                 
         return True
-
-
-class ValidatorRegistry:
-    """رجیستری برای مدیریت کلیدهای عمومی ولیدیتورها"""
-    _validators = {}
-    
-    @classmethod
-    def add_validator(cls, address: str, public_key_pem: str):
-        cls._validators[address] = public_key_pem
-    
-    @classmethod
-    def get_public_key(cls, address: str) -> ec.EllipticCurvePublicKey:
-        public_key_pem = cls._validators.get(address)
-        if not public_key_pem:
-            raise ValueError(f"Validator {address} not registered")
-        return load_pem_public_key(public_key_pem.encode())

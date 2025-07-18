@@ -6,7 +6,7 @@ from src.blockchain.repositories import BlockRepository, TransactionRepository
 from src.utils.logger import logger
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from src.blockchain.consensus import ValidatorRegistry
+from src.blockchain.validator_registry import ValidatorRegistry
 import os
 
 class Blockchain:
