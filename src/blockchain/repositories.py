@@ -40,14 +40,14 @@ class BlockRepository:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM blocks WHERE "index" = ?', (index,))
             row = cursor.fetchone()
-            
+        
             if not row:
                 return None
-                
-            # بازیابی تراکنش‌های این بلاک
-            transactions = TransactionRepository.get_transactions_by_block_id(row[0])
             
-            # ایجاد شیء Block بدون ارسال hash به عنوان پارامتر اولیه
+            transactions = TransactionRepository.get_transactions_by_block_id(row[0])
+
+
+            # ایجاد بلاک با استفاده از هش ذخیره شده در دیتابیس
             block = Block(
                 index=row[1],
                 timestamp=row[2],
@@ -56,46 +56,13 @@ class BlockRepository:
                 nonce=row[4],
                 difficulty=row[6]
             )
-            
-            # بررسی تطابق هش
-            if block.hash != row[5]:
-                logger.warning(f"Block hash mismatch for block {row[1]}")
-                return None
-                
+        
+            # استفاده از هش ذخیره شده به جای محاسبه مجدد
+            block.hash = row[5]
+            block.validator = row[7] if len(row) > 7 else ""
+        
             return block
-
-    @staticmethod
-    def get_block_by_index(index: int) -> Optional[Block]:
-        """بازیابی بلاک بر اساس شماره ایندکس"""
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM blocks WHERE "index" = ?', (index,))
-            row = cursor.fetchone()
-            
-            if not row:
-                return None
-                
-            # بازیابی تراکنش‌های این بلاک
-            transactions = TransactionRepository.get_transactions_by_block_id(row[0])
-            
-            # ایجاد شیء Block
-            block = Block(
-                index=row[1],
-                timestamp=row[2],
-                transactions=transactions,
-                previous_hash=row[3],
-                nonce=row[4],
-                difficulty=row[6]
-            )
-            
-            # بررسی تطابق هش (با تلرانس برای timestamp)
-            if block.hash != row[5]:
-                logger.warning(f"Block hash mismatch for block {row[1]}")
-                logger.debug(f"Stored hash: {row[5]}, Calculated hash: {block.hash}")
-                return None
-                
-            return block
-
+    
     @staticmethod
     def get_blocks_paginated(page: int = 1, per_page: int = 10) -> List[Block]:
         """بازیابی بلاک‌ها به صورت صفحه‌بندی شده"""

@@ -7,24 +7,46 @@ from src.utils.logger import logger
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from src.blockchain.validator_registry import ValidatorRegistry
+from src.utils.database import init_db, db_connection
 import os
+import time
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):
         self.difficulty = difficulty
         self.chain = []
-        
+    
         try:
-            # اطمینان از وجود دیتابیس
             from src.utils.database import init_db
             init_db()
-            
+        
             self.chain = self.load_chain()
             if not self.chain:
                 self._initialize_new_chain()
+            else:
+                # اگر زنجیره نامعتبر بود، دیتابیس را ریست کنیم
+                if not Consensus.is_chain_valid(self.chain):
+                    logger.warning("Invalid chain detected, resetting database...")
+                    self._reset_blockchain()
+                    self._initialize_new_chain()
+                
         except Exception as e:
             logger.error(f"Chain initialization failed: {e}")
+            self._reset_blockchain()
             self._initialize_new_chain()
+
+    def _reset_blockchain(self):
+        """پاکسازی دیتابیس و شروع مجدد"""
+        logger.warning("Resetting blockchain database...")
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executescript('''
+            DROP TABLE IF EXISTS blocks;
+            DROP TABLE IF EXISTS transactions;
+            DROP TABLE IF EXISTS mempool;
+            ''')
+            conn.commit()
+        init_db()
 
     def _initialize_new_chain(self):
         """مقداردهی اولیه یک زنجیره جدید"""
@@ -89,43 +111,42 @@ class Blockchain:
         logger.info(f"Successfully loaded chain with {len(chain)} blocks")
         return chain
 
-    def add_block(self, transactions: List[Transaction], validator_private_key: ec.EllipticCurvePrivateKey):
+    def add_block(self, transactions: List[Transaction], validator_private_key: ec.EllipticCurvePrivateKey) -> Optional[Block]:
         """اضافه کردن بلاک جدید به زنجیره"""
         if not transactions:
             logger.warning("Cannot add empty block")
             return None
-            
+        
         last_block = self.get_last_block()
         if not last_block:
             logger.error("Chain not initialized")
             return None
-            
+        
         # ایجاد بلاک جدید
         new_block = Block(
             index=last_block.index + 1,
-            timestamp=None,
+            timestamp=int(time.time()),  # استفاده از timestamp صحیح
             transactions=transactions,
             previous_hash=last_block.hash,
             difficulty=self.difficulty
         )
-        
+    
         # انجام اثبات کار
         new_block = Consensus.proof_of_work(new_block)
 
-        new_block.validator = self.get_validator_address(validator_private_key)
-        new_block.sign_block(validator_private_key)
-
-        public_key_pem = validator_private_key.public_key().public_bytes(
+        # امضای بلاک
+        public_key = validator_private_key.public_key()
+        new_block.validator = public_key.public_bytes(
             Encoding.PEM,
             PublicFormat.SubjectPublicKeyInfo
         ).decode()
-        ValidatorRegistry.add_validator(new_block.validator, public_key_pem)
-        
+        new_block.sign_block(validator_private_key)
+    
         # ذخیره در دیتابیس
         try:
             block_id = BlockRepository.save_block(new_block)
             TransactionRepository.save_transactions_bulk(transactions, block_id)
-            
+        
             # اضافه کردن به زنجیره در حافظه
             self.chain.append(new_block)
             logger.info(f"Block #{new_block.index} added to chain")

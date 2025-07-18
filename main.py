@@ -1,5 +1,7 @@
 from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
+from src.blockchain.mempool import Mempool
+from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 import json
 
@@ -17,6 +19,7 @@ def main():
     
     try:
         bc = Blockchain(difficulty=3)
+        mempool = Mempool()  # ایجاد یک نمونه از Mempool
         print(f"Blockchain initialized with {len(bc.chain)} blocks")
         
         if bc.chain:
@@ -48,24 +51,32 @@ def main():
                         data=data
                     )
                     
-                    # در یک پیاده‌سازی کامل، اینجا تراکنش به mempool اضافه می‌شود
-                    print(f"Transaction created: {tx.tx_hash}")
+                    # اضافه کردن تراکنش به Mempool
+                    if mempool.add_transaction(tx):
+                        print(f"✅ Transaction added to mempool: {tx.tx_hash}")
+                    else:
+                        print("❌ Failed to add transaction to mempool")
                     
                 except Exception as e:
                     print(f"Error: {e}")
                     
             elif choice == "2":
-                # در یک پیاده‌سازی کامل، تراکنش‌ها از mempool گرفته می‌شوند
-                dummy_tx = Transaction(
-                    sender="network",
-                    recipient="miner",
-                    amount=1.0,
-                    data={"type": "reward", "message": "Block mining reward"}
-                )
+                # دریافت تراکنش‌ها از Mempool
+                transactions = mempool.get_transactions()
                 
-                new_block = bc.add_block([dummy_tx])
+                if not transactions:
+                    print("No transactions in mempool to mine")
+                    continue
+                
+                # ایجاد کلید خصوصی برای ولیدیتور
+                validator_private_key = ec.generate_private_key(ec.SECP256K1())
+                
+                # اضافه کردن بلاک جدید با تراکنش‌های Mempool
+                new_block = bc.add_block(transactions, validator_private_key)
                 if new_block:
                     print_block(new_block)
+                    # حذف تراکنش‌های ماین شده از Mempool
+                    mempool.remove_transactions([tx.tx_hash for tx in transactions])
                 else:
                     print("Failed to mine block")
                     

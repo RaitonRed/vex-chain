@@ -24,11 +24,14 @@ class Block:
     validator: str = ""
     signature: str = ""
     
+
     def __post_init__(self):
         self.timestamp = self.timestamp or time.time()
         self.transactions_hash = self.calculate_transactions_hash()
-        self.hash = self.calculate_hash()
+        if not hasattr(self, 'hash') or not self.hash:
+            self.hash = self.calculate_hash()
 
+   
     def sign_block(self, private_key: ec.EllipticCurvePrivateKey):
         signature = private_key.sign(
                 self.hash.encode(),
@@ -65,17 +68,17 @@ class Block:
         return hashlib.sha256(''.join(tx_hashes).encode()).hexdigest()
 
     def calculate_hash(self) -> str:
-        """محاسبه هش بلاک با استفاده از تمام فیلدهای مهم"""
+        """محاسبه هش بلاک با فیلدهای ثابت"""
         block_data = {
             'index': self.index,
-            'timestamp': self.timestamp,
+            'timestamp': int(self.timestamp),  # ثابت کردن timestamp
             'transactions_hash': self.transactions_hash,
             'previous_hash': self.previous_hash,
             'nonce': self.nonce,
             'difficulty': self.difficulty
         }
         return hashlib.sha256(
-            json.dumps(block_data, sort_keys=True, ensure_ascii=False).encode()
+            json.dumps(block_data, sort_keys=True).encode()
         ).hexdigest()
 
     def to_dict(self) -> dict:

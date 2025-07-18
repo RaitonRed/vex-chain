@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
 from src.blockchain.repositories import BlockRepository, TransactionRepository
+from src.blockchain.mempool import Mempool
+from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 
 app = Flask(__name__)
@@ -67,37 +69,53 @@ def add_transaction():
             data=data.get('data', {})
         )
         
-        # در یک پیاده‌سازی واقعی، اینجا تراکنش به mempool اضافه می‌شود
-        # و بعداً در بلاک جدید قرار می‌گیرد
-        
-        return jsonify({
-            'status': 'success',
-            'tx_hash': tx.tx_hash
-        }), 201
+        # اضافه کردن تراکنش به mempool
+        mempool = Mempool()
+        if mempool.add_transaction(tx):
+            return jsonify({
+                'status': 'success',
+                'tx_hash': tx.tx_hash
+            }), 201
+        else:
+            return jsonify({'error': 'Failed to add transaction to mempool'}), 400
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
 @app.route('/mine', methods=['POST'])
 def mine_block():
-    # در یک پیاده‌سازی واقعی، تراکنش‌ها از mempool گرفته می‌شوند
-    dummy_tx = Transaction(
-        sender="network",
-        recipient="miner",
-        amount=1.0,
-        data={"type": "reward", "message": "Block mining reward"}
-    )
     
-    new_block = blockchain.add_block([dummy_tx])
-    if not new_block:
-        return jsonify({'error': 'Failed to mine block'}), 500
+    # دریافت تراکنش‌ها از mempool
+    mempool = Mempool()
+    transactions = mempool.get_transactions()
+    
+    if not transactions:
+        return jsonify({'error': 'No transactions to mine'}), 400
+    
+    try:
+        # ساخت کلید خصوصی برای ولیدیتور (در محیط واقعی باید از کلید واقعی استفاده شود)
+        validator_private_key = ec.generate_private_key(ec.SECP256K1())
         
-    return jsonify({
-        'status': 'success',
-        'block': {
-            'index': new_block.index,
-            'hash': new_block.hash
-        }
-    }), 201
+        # اضافه کردن بلاک جدید
+        new_block = blockchain.add_block(transactions, validator_private_key)
+        if not new_block:
+            return jsonify({'error': 'Failed to mine block'}), 500
+        
+        # حذف تراکنش‌های پردازش شده از mempool
+        mempool.remove_transactions([tx.tx_hash for tx in transactions])
+        
+        return jsonify({
+            'status': 'success',
+            'block': {
+                'index': new_block.index,
+                'hash': new_block.hash,
+                'transaction_count': len(new_block.transactions)
+            }
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Mining failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
