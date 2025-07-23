@@ -1,0 +1,10 @@
+class P2PProtocols:
+    """Define constants for P2P message types"""
+    GET_BLOCKCHAIN = "get_blockchain"
+    BLOCKCHAIN = "blockchain"
+    GET_MEMPOOL = "get_mempool"
+    MEMPOOL = "mempool"
+    NEW_BLOCK = "new_block"
+    NEW_TRANSACTION = "new_transaction"
+    GET_PEERS = "get_peers"
+    PEERS = "peers"
