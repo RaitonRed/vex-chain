@@ -20,6 +20,16 @@ class Transaction:
     signature: Optional[str] = None
     tx_hash: str = field(default="", init=False)
 
+    # Smart Contracts
+    contract_type: str = "NORMAL"  # NORMAL, CREATE, CALL
+    contract_code: Optional[str] = None
+    contract_method: Optional[str] = None
+    contract_args: Dict[str, Any] = field(default_factory=dict)
+    gas_limit: int = 1000000
+    gas_price: float = 0.001
+    contract_address: Optional[str] = None
+
+
     def __post_init__(self):
         self.tx_hash = self.calculate_hash()
 
@@ -30,7 +40,14 @@ class Transaction:
             'recipient': self.recipient,
             'amount': self.amount,
             'data': self.data,
-            'timestamp': self.timestamp
+            'timestamp': self.timestamp,
+            'contract_type': self.contract_type,
+            'contract_code': self.contract_code,
+            'contract_method': self.contract_method,
+            'contract_args': self.contract_args,
+            'gas_limit': self.gas_limit,
+            'gas_price': self.gas_price,
+            'contract_address': self.contract_address
         }
         return hashlib.sha256(
             json.dumps(tx_data, sort_keys=True).encode()

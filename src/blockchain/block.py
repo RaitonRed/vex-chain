@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
 from cryptography.exceptions import InvalidSignature
+from src.blockchain.validator_registry import ValidatorRegistry
 from src.utils.logger import logger
 
 @dataclass
@@ -40,20 +41,24 @@ class Block:
         self.signature = binascii.hexlify(signature).decode()
 
     def verify_signature(self) -> bool:
+        """بررسی امضای بلوک با کلید عمومی ولیدیتور"""
         if not self.signature or not self.validator:
+            logger.error("Missing signature or validator")
             return False
 
         try:
+            public_key = ValidatorRegistry.get_public_key(self.validator)
+            signature_bytes = binascii.unhexlify(self.signature)
+            public_key.verify(
+                signature_bytes,
+                self.hash.encode(),
+                ec.ECDSA(hashes.SHA256())
+            )
             return True
         except (InvalidSignature, ValueError, TypeError) as e:
-            logger.error(f"Signature verification failed: {e}")
+            logger.error(f"Block signature verification failed: {e}")
             return False
-    
-    def __post_init__(self):
-        self.timestamp = self.timestamp or time.time()
-        self.transactions_hash = self.calculate_transactions_hash()
-        self.hash = self.calculate_hash()
-
+        
     def sign_block(self, private_key: ec.EllipticCurvePrivateKey):
         signature = private_key.sign(
                 self.hash.encode(),

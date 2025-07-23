@@ -1,10 +1,6 @@
 import sqlite3
-import json
 import os
 import contextlib
-from typing import List, Optional
-from src.blockchain.block import Block
-from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
 
 DB_FILE = "data/blockchain.db"
@@ -83,6 +79,42 @@ def init_db():
             signature TEXT,
             fee REAL DEFAULT 0
         );
+                             
+        -- جدول قراردادها
+        CREATE TABLE IF NOT EXISTS contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            address TEXT NOT NULL UNIQUE,
+            code TEXT NOT NULL,
+            creator TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+        
+        -- جدول وضعیت ذخیره‌سازی قراردادها
+        CREATE TABLE IF NOT EXISTS contract_state (
+            contract_address TEXT PRIMARY KEY,
+            storage TEXT NOT NULL,  -- JSON string of storage
+            FOREIGN KEY (contract_address) REFERENCES contracts(address) ON DELETE CASCADE
+        );
+        
+        -- جدول رویدادهای قراردادها
+        CREATE TABLE IF NOT EXISTS contract_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contract_address TEXT NOT NULL,
+            event_name TEXT NOT NULL,
+            event_data TEXT NOT NULL,
+            block_number INTEGER NOT NULL,
+            tx_hash TEXT NOT NULL,
+            timestamp REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS gas_usage (
+            tx_hash TEXT PRIMARY KEY,
+            gas_used INTEGER NOT NULL,
+            gas_limit INTEGER NOT NULL,
+            refunded INTEGER DEFAULT 0,
+            FOREIGN KEY (tx_hash) REFERENCES transactions(tx_hash)
+        );
+
         
         -- ایندکس‌های جدول بلاک‌ها
         CREATE INDEX IF NOT EXISTS idx_blocks_index ON blocks ("index");
@@ -106,6 +138,17 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_mempool_sender ON mempool (sender);
         CREATE INDEX IF NOT EXISTS idx_mempool_recipient ON mempool (recipient);
         CREATE INDEX IF NOT EXISTS idx_mempool_timestamp ON mempool (timestamp);
+
+        -- ایندکس های قرارداد هوشمند
+        CREATE INDEX IF NOT EXISTS idx_contracts_address ON contracts (address);
+        CREATE INDEX IF NOT EXISTS idx_contracts_creator ON contracts (creator);
+        CREATE INDEX IF NOT EXISTS idx_contract_state ON contract_state (contract_address);
+        CREATE INDEX IF NOT EXISTS idx_contract_events ON contract_events (contract_address, event_name);
+                             
+        CREATE INDEX IF NOT EXISTS idx_gas_usage_tx ON gas_usage(tx_hash);
+                             
+        ALTER TABLE contracts ADD COLUMN gas_limit INTEGER DEFAULT 1000000;
+        ALTER TABLE contracts ADD COLUMN last_used REAL DEFAULT 0;
         ''')
         
         # ایجاد جدول وضعیت زنجیره (برای ذخیره آخرین حالت)

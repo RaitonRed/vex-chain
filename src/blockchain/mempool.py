@@ -4,31 +4,28 @@ from src.utils.logger import logger
 from src.utils.database import db_connection
 import json
 import time
+import sqlite3
 
 class Mempool:
-    """مدیریت تراکنش‌های منتظر تایید"""
-    
     def __init__(self):
         self.transactions: Dict[str, Transaction] = {}
         self.max_size = 1000
-        self._load_from_db()  # بارگذاری تراکنش‌های موجود در دیتابیس هنگام راه‌اندازی
+        # بارگذاری فقط در صورتی که جدول mempool وجود دارد
+        try:
+            self._load_from_db()
+        except sqlite3.OperationalError:
+            logger.warning("Mempool table not found, starting with empty mempool")
 
     def _load_from_db(self):
-        """بارگذاری تراکنش‌های موجود در دیتابیس به حافظه"""
+        """بارگذاری تراکنش‌ها فقط اگر جدول وجود دارد"""
         with db_connection() as conn:
             cursor = conn.cursor()
+            # بررسی وجود جدول mempool
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='mempool'")
+            if not cursor.fetchone():
+                return
+                
             cursor.execute('SELECT * FROM mempool')
-            for row in cursor.fetchall():
-                tx = Transaction(
-                    sender=row[2],
-                    recipient=row[3],
-                    amount=row[4],
-                    data=json.loads(row[5]),
-                    timestamp=row[6],
-                    signature=row[7]
-                )
-                tx.tx_hash = row[1]  # تنظیم هش تراکنش
-                self.transactions[tx.tx_hash] = tx
 
     def add_transaction(self, tx: Transaction) -> bool:
         """اضافه کردن تراکنش جدید به mempool"""

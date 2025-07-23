@@ -1,10 +1,12 @@
-from typing import List
+from typing import List, Optional
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
+import random
+import time
 
 class Consensus:
-    """پیاده‌سازی الگوریتم اجماع Proof of Work"""
+    """پیاده‌سازی الگوریتم اجماع"""
     
     @staticmethod
     def validate_block(block: Block, previous_block: Block) -> bool:
@@ -29,16 +31,28 @@ class Consensus:
         return True
 
     @staticmethod
-    def proof_of_work(block: Block) -> Block:
-        """انجام اثبات کار برای یک بلاک"""
-        logger.info(f"Mining block #{block.index} with difficulty {block.difficulty}...")
+    def proof_of_work(block: Block, max_nonce: int = 2**32) -> Optional[Block]:
+        """الگوریتم PoW با محدودیت و بهینه‌سازی"""
+        logger.info(f"Mining block #{block.index} [difficulty: {block.difficulty}]")
         
-        while not block.hash.startswith('0' * block.difficulty):
-            block.nonce += 1
+        start_time = time.time()
+        target = '0' * block.difficulty
+        
+        for nonce in range(max_nonce):
+            block.nonce = nonce
             block.hash = block.calculate_hash()
             
-        logger.info(f"Block mined: {block.hash}")
-        return block
+            if block.hash.startswith(target):
+                elapsed = time.time() - start_time
+                logger.info(f"Block mined in {elapsed:.2f}s | Nonce: {nonce} | Hash: {block.hash[:16]}...")
+                return block
+            
+            # بهینه‌سازی: افزایش nonce به صورت تصادفی برای جلوگیری از الگوهای قابل پیش‌بینی
+            if nonce % 100000 == 0:
+                block.nonce = random.randint(0, max_nonce)
+        
+        logger.warning(f"PoW failed after {max_nonce} attempts")
+        return None
 
     @staticmethod
     def cumulative_difficulty(chain: List[Block]) -> int:

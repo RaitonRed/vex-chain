@@ -1,15 +1,18 @@
+import random
+import time
 from typing import List, Optional
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.blockchain.consensus import Consensus
+from src.blockchain.contract.vm import SmartContractVM
+from src.blockchain.state_db import StateDB
 from src.blockchain.repositories import BlockRepository, TransactionRepository
-from src.utils.logger import logger
+from src.blockchain.validator_registry import ValidatorRegistry
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from src.blockchain.validator_registry import ValidatorRegistry
+from src.utils.logger import logger
 from src.utils.database import init_db, db_connection
-import os
-import time
+
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):
@@ -32,24 +35,11 @@ class Blockchain:
                 
         except Exception as e:
             logger.error(f"Chain initialization failed: {e}")
-            self._reset_blockchain()
+            logger.info("Attempting to create new blockchain...")
             self._initialize_new_chain()
 
-    def _reset_blockchain(self):
-        """پاکسازی دیتابیس و شروع مجدد"""
-        logger.warning("Resetting blockchain database...")
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.executescript('''
-            DROP TABLE IF EXISTS blocks;
-            DROP TABLE IF EXISTS transactions;
-            DROP TABLE IF EXISTS mempool;
-            ''')
-            conn.commit()
-        init_db()
-
     def _initialize_new_chain(self):
-        """مقداردهی اولیه یک زنجیره جدید"""
+        """مقداردهی اولیه یک زنجیره جدید بدون ریست دیتابیس"""
         logger.info("Initializing new blockchain")
         try:
             # ایجاد بلاک جنسیس
@@ -59,6 +49,7 @@ class Blockchain:
         except Exception as e:
             logger.error(f"Failed to initialize new chain: {e}")
             raise RuntimeError("Failed to initialize blockchain") from e
+
 
     def _create_genesis_block(self) -> Block:
         """ایجاد بلاک جنسیس"""
@@ -112,47 +103,78 @@ class Blockchain:
         return chain
 
     def add_block(self, transactions: List[Transaction], validator_private_key: ec.EllipticCurvePrivateKey) -> Optional[Block]:
-        """اضافه کردن بلاک جدید به زنجیره"""
+        """اضافه کردن بلاک جدید با مدیریت خطاهای بهبودیافته"""
         if not transactions:
-            logger.warning("Cannot add empty block")
+            logger.warning("Attempt to add empty block")
             return None
-        
+
         last_block = self.get_last_block()
         if not last_block:
             logger.error("Chain not initialized")
             return None
-        
-        # ایجاد بلاک جدید
-        new_block = Block(
-            index=last_block.index + 1,
-            timestamp=int(time.time()),  # استفاده از timestamp صحیح
-            transactions=transactions,
-            previous_hash=last_block.hash,
-            difficulty=self.difficulty
-        )
-    
-        # انجام اثبات کار
-        new_block = Consensus.proof_of_work(new_block)
 
-        # امضای بلاک
-        public_key = validator_private_key.public_key()
-        new_block.validator = public_key.public_bytes(
-            Encoding.PEM,
-            PublicFormat.SubjectPublicKeyInfo
-        ).decode()
-        new_block.sign_block(validator_private_key)
-    
-        # ذخیره در دیتابیس
         try:
+            # اجرای قراردادهای هوشمند با مدیریت Gas
+            vm = SmartContractVM(StateDB())
+            successful_txs = []
+            
+            # ایجاد بلاک جدید موقت برای اجرای قراردادها
+            temp_block = Block(
+                index=last_block.index + 1,
+                timestamp=int(time.time()),
+                transactions=transactions,
+                previous_hash=last_block.hash,
+                difficulty=self.difficulty
+            )
+            
+            for tx in transactions:
+                if tx.contract_type != "NORMAL":
+                    logger.info(f"Executing contract tx: {tx.tx_hash[:8]}")
+                    success, result = vm.execute(tx, temp_block.index, temp_block.timestamp)
+                    
+                    if not success:
+                        logger.error(f"Contract execution failed, skipping tx: {result}")
+                        continue
+                    
+                    tx.contract_output = result
+                    successful_txs.append(tx)
+                else:
+                    successful_txs.append(tx)
+
+            if not successful_txs:
+                logger.warning("No valid transactions to include in block")
+                return None
+
+            # ایجاد بلوک نهایی با تراکنش‌های معتبر
+            new_block = Block(
+                index=last_block.index + 1,
+                timestamp=int(time.time()),
+                transactions=successful_txs,
+                previous_hash=last_block.hash,
+                difficulty=self.difficulty
+            )
+
+            # اثبات کار
+            new_block = Consensus.proof_of_work(new_block)
+            
+            # امضای بلوک
+            public_key = validator_private_key.public_key()
+            new_block.validator = public_key.public_bytes(
+                Encoding.PEM,
+                PublicFormat.SubjectPublicKeyInfo
+            ).decode()
+            new_block.sign_block(validator_private_key)
+
+            # ذخیره در دیتابیس
             block_id = BlockRepository.save_block(new_block)
-            TransactionRepository.save_transactions_bulk(transactions, block_id)
-        
-            # اضافه کردن به زنجیره در حافظه
+            TransactionRepository.save_transactions_bulk(successful_txs, block_id)
+            
             self.chain.append(new_block)
-            logger.info(f"Block #{new_block.index} added to chain")
+            logger.info(f"Block #{new_block.index} added with {len(successful_txs)} txs")
             return new_block
+
         except Exception as e:
-            logger.error(f"Failed to save block: {e}")
+            logger.error(f"Block addition failed: {str(e)}")
             return None
 
     def get_last_block(self) -> Optional[Block]:

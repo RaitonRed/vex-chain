@@ -2,6 +2,7 @@ from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
 from src.blockchain.mempool import Mempool
 from cryptography.hazmat.primitives.asymmetric import ec
+from src.blockchain.contract.contract_manager import ContractManager
 from src.utils.logger import logger
 import json
 
@@ -32,7 +33,11 @@ def main():
             print("3. View last block")
             print("4. View chain info")
             print("5. Validate chain")
-            print("6. Exit")
+            print("6. Deploy smart contract")
+            print("7. Call smart contract")
+            print("8. View contract state")
+            print("9. Exit")
+            
             
             choice = input("> Select an option: ").strip()
             
@@ -98,12 +103,61 @@ def main():
                 else:
                     print("❌ Chain is invalid")
                     
-            elif choice == "6":
+            elif choice == "9":
                 print("Exiting...")
                 break
                 
-            else:
-                print("Invalid option")
+            elif choice == "6":
+                try:
+                    sender = input("Sender address: ")
+                    print("Enter contract code (end with 'END' on a new line):")
+                    code_lines = []
+                    while True:
+                        line = input()
+                        if line.strip() == "END":
+                            break
+                        code_lines.append(line)
+                    code = "\n".join(code_lines)
+                
+                    contract_address = ContractManager.deploy_contract(sender, code)
+                    print(f"✅ Contract deployed at: {contract_address}")
+                
+                except Exception as e:
+                    print(f"Error: {e}")
+                
+            elif choice == "7":
+                try:
+                    sender = input("Sender address: ")
+                    contract_address = input("Contract address: ")
+                    method = input("Method to call: ")
+                    args_str = input("Arguments (JSON): ") or "{}"
+                    args = json.loads(args_str)
+                    amount = float(input("Amount to send (0 for none): "))
+                
+                    tx = ContractManager.call_contract(sender, contract_address, method, args, amount)
+                
+                    # اضافه کردن تراکنش به Mempool
+                    if mempool.add_transaction(tx):
+                        print(f"✅ Contract call transaction added: {tx.tx_hash}")
+                    else:
+                        print("❌ Failed to add transaction to mempool")
+                
+                except Exception as e:
+                    print(f"Error: {e}")
+                
+            elif choice == "8":
+                try:
+                    contract_address = input("Contract address: ")
+                    state = ContractManager.get_contract_state(contract_address)
+                    print(f"Contract state for {contract_address}:")
+                    for key, value in state.items():
+                        print(f"  {key}: {value}")
+                    
+                except Exception as e:
+                    print(f"Error: {e}")
+                
+                else:
+                    print("Invalid option")
 
     except Exception as e:
         print(f"❌ Failed to initialize blockchain: {e}")
