@@ -1,22 +1,34 @@
-from typing import List, Optional
-from src.blockchain.block import Block
-from src.blockchain.transaction import Transaction
-from src.utils.logger import logger
 import random
-import time
+from typing import List, Dict
+from src.blockchain.block import Block
+from src.utils.logger import logger
+from src.blockchain.validator_registry import ValidatorRegistry
 
 class Consensus:
-    """پیاده‌سازی الگوریتم اجماع"""
+    """پیاده‌سازی الگوریتم اجماع Proof of Stake"""
     
     @staticmethod
+    def select_validator(validators: Dict[str, float]) -> str:
+        """انتخاب تصادفی ولیدیتور با وزن سهام"""
+        total_stake = sum(validators.values())
+        selection_point = random.uniform(0, total_stake)
+        current_sum = 0
+        
+        for address, stake in validators.items():
+            current_sum += stake
+            if current_sum >= selection_point:
+                return address
+        return list(validators.keys())[0]
+
+    @staticmethod
     def validate_block(block: Block, previous_block: Block) -> bool:
-        """اعتبارسنجی کامل یک بلاک"""
-        if block.hash != block.calculate_hash():
-            logger.error(f"Invalid block hash for block {block.index}")
+        """اعتبارسنجی کامل یک بلاک در PoS"""
+        if not block.verify_signature():
+            logger.error(f"Invalid block signature for block {block.index}")
             return False
             
-        if not block.hash.startswith('0' * block.difficulty):
-            logger.error(f"PoW validation failed for block {block.index}")
+        if block.hash != block.calculate_hash():
+            logger.error(f"Invalid block hash for block {block.index}")
             return False
             
         if block.previous_hash != previous_block.hash:
@@ -27,41 +39,11 @@ class Consensus:
             logger.error(f"Invalid transaction hash in block {block.index}")
             return False
             
-        # تاخیر در بررسی امضا تا زمان نیاز
         return True
 
     @staticmethod
-    def proof_of_work(block: Block, max_nonce: int = 2**32) -> Optional[Block]:
-        """الگوریتم PoW با محدودیت و بهینه‌سازی"""
-        logger.info(f"Mining block #{block.index} [difficulty: {block.difficulty}]")
-        
-        start_time = time.time()
-        target = '0' * block.difficulty
-        
-        for nonce in range(max_nonce):
-            block.nonce = nonce
-            block.hash = block.calculate_hash()
-            
-            if block.hash.startswith(target):
-                elapsed = time.time() - start_time
-                logger.info(f"Block mined in {elapsed:.2f}s | Nonce: {nonce} | Hash: {block.hash[:16]}...")
-                return block
-            
-            # بهینه‌سازی: افزایش nonce به صورت تصادفی برای جلوگیری از الگوهای قابل پیش‌بینی
-            if nonce % 100000 == 0:
-                block.nonce = random.randint(0, max_nonce)
-        
-        logger.warning(f"PoW failed after {max_nonce} attempts")
-        return None
-
-    @staticmethod
-    def cumulative_difficulty(chain: List[Block]) -> int:
-        """محاسبه سختی تجمعی زنجیره"""
-        return sum(2 ** block.difficulty for block in chain)
-
-    @staticmethod
     def is_chain_valid(chain: List[Block]) -> bool:
-        """اعتبارسنجی کامل یک زنجیره"""
+        """اعتبارسنجی کامل یک زنجیره در PoS"""
         if not chain:
             return False
             

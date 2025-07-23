@@ -24,6 +24,7 @@ class Block:
     transactions_hash: str = field(init=False)
     validator: str = ""
     signature: str = ""
+    stake_amount: float = 0
     
 
     def __post_init__(self):
@@ -33,10 +34,13 @@ class Block:
             self.hash = self.calculate_hash()
 
    
-    def sign_block(self, private_key: ec.EllipticCurvePrivateKey):
+    def sign_block(self, private_key: ec.EllipticCurvePrivateKey, stake: float):
+        """امضای بلاک با کلید خصوصی ولیدیتور"""
+        self.validator = ValidatorRegistry.get_validator_address(private_key)
+        self.stake_amount = stake
         signature = private_key.sign(
-                self.hash.encode(),
-                ec.ECDSA(hashes.SHA256())
+            self.hash.encode(),
+            ec.ECDSA(hashes.SHA256())
         )
         self.signature = binascii.hexlify(signature).decode()
 

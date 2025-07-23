@@ -4,6 +4,9 @@ from src.blockchain.mempool import Mempool
 from cryptography.hazmat.primitives.asymmetric import ec
 from src.blockchain.contract.contract_manager import ContractManager
 from src.utils.logger import logger
+from src.blockchain.stake_manager import StakeManager
+from src.blockchain.validator_registry import ValidatorRegistry
+from src.blockchain.consensus import Consensus
 import json
 
 def print_block(block):
@@ -29,10 +32,10 @@ def main():
         while True:
             print("\nMenu:")
             print("1. Add transaction")
-            print("2. Mine block")
-            print("3. View last block")
-            print("4. View chain info")
-            print("5. Validate chain")
+            print("2. Stake coins")
+            print("3. Unstake coins")
+            print("4. View validator status")
+            print("5. Mine block (Validator only)")
             print("6. Deploy smart contract")
             print("7. Call smart contract")
             print("8. View contract state")
@@ -65,25 +68,11 @@ def main():
                 except Exception as e:
                     print(f"Error: {e}")
                     
-            elif choice == "2":
-                # دریافت تراکنش‌ها از Mempool
-                transactions = mempool.get_transactions()
-                
-                if not transactions:
-                    print("No transactions in mempool to mine")
-                    continue
-                
-                # ایجاد کلید خصوصی برای ولیدیتور
-                validator_private_key = ec.generate_private_key(ec.SECP256K1())
-                
-                # اضافه کردن بلاک جدید با تراکنش‌های Mempool
-                new_block = bc.add_block(transactions, validator_private_key)
-                if new_block:
-                    print_block(new_block)
-                    # حذف تراکنش‌های ماین شده از Mempool
-                    mempool.remove_transactions([tx.tx_hash for tx in transactions])
-                else:
-                    print("Failed to mine block")
+            elif choice == "2":  # Stake coins
+                address = input("Your address: ")
+                amount = float(input("Amount to stake: "))
+                StakeManager.stake(address, amount, len(bc.chain))
+                print(f"✅ Staked {amount} coins")
                     
             elif choice == "3":
                 last_block = bc.get_last_block()
@@ -97,11 +86,34 @@ def main():
                 print(f"Difficulty: {bc.difficulty}")
                 print(f"Last block index: {bc.get_last_block().index if bc.chain else 'N/A'}")
                 
-            elif choice == "5":
-                if bc.is_chain_valid():
-                    print("✅ Chain is valid")
-                else:
-                    print("❌ Chain is invalid")
+            elif choice == "5":  # Mine block
+                if not bc.chain:
+                    print("Chain not initialized")
+                    continue
+                
+                # انتخاب ولیدیتور
+                validators = ValidatorRegistry.get_active_validators()
+                if not validators:
+                    print("No active validators")
+                    continue
+                
+                selected = Consensus.select_validator(validators)
+                print(f"Selected validator: {selected[:8]}... (stake: {validators[selected]})")
+            
+                # اجرای معمولی اضافه کردن بلاک
+                transactions = mempool.get_transactions()
+                if not transactions:
+                    print("No transactions to mine")
+                    continue
+                
+                # در محیط واقعی باید کلید خصوصی ولیدیتور انتخاب شده استفاده شود
+                validator_key = ec.generate_private_key(ec.SECP256K1())
+                new_block = bc.add_block(transactions, validator_key)
+            
+                if new_block:
+                    print_block(new_block)
+                    mempool.remove_transactions([tx.tx_hash for tx in transactions])
+                    StakeManager.distribute_rewards(new_block)
                     
             elif choice == "9":
                 print("Exiting...")
