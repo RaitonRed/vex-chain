@@ -60,11 +60,21 @@ def init_db():
             last_seen REAL DEFAULT (strftime('%s', 'now'))
         );
         
-        -- جدول جدید: ولیدیتورها (اضافه شد)
+       -- جدول ولیدیتورها
         CREATE TABLE IF NOT EXISTS validators (
             address TEXT PRIMARY KEY,
             public_key_pem TEXT NOT NULL,
-            last_updated REAL DEFAULT (strftime('%s', 'now'))
+            stake REAL NOT NULL DEFAULT 0,
+            last_active TIMESTAMP
+        );
+    
+         -- جدول سهام‌گذاری
+        CREATE TABLE IF NOT EXISTS stakes (
+            tx_hash TEXT PRIMARY KEY,
+            address TEXT NOT NULL,
+            amount REAL NOT NULL,
+            block_number INTEGER NOT NULL,
+            timestamp TIMESTAMP NOT NULL
         );
         
         -- جدول جدید: حافظه موقت تراکنش‌ها (Mempool)
