@@ -1,4 +1,3 @@
-# tests/conftest.py
 import pytest
 import os
 from src.utils.database import init_db, db_connection
