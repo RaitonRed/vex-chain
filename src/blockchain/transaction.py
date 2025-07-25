@@ -19,6 +19,7 @@ class Transaction:
     timestamp: float = field(default_factory=time.time)
     signature: Optional[str] = None
     tx_hash: str = field(default="", init=False)
+    nonce: int
 
     # Smart Contracts
     contract_type: str = "NORMAL"  # NORMAL, CREATE, CALL
@@ -49,7 +50,8 @@ class Transaction:
             'contract_args': self.contract_args,
             'gas_limit': self.gas_limit,
             'gas_price': self.gas_price,
-            'contract_address': self.contract_address
+            'contract_address': self.contract_address,
+            'nonce': self.nonce
         }
         return hashlib.sha256(
             json.dumps(tx_data, sort_keys=True).encode()
