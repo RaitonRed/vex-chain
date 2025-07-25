@@ -115,8 +115,26 @@ class BlockchainNode:
             time.sleep(1)
 
     def wait_for_services(self, timeout=30):
-        """Wait for all services to become ready"""
-        return self._service_ready.wait(timeout=timeout)
+        """Wait for all services to become ready with better checks"""
+        start_time = time.time()
+    
+        # لیست سرویس‌های ضروری
+        essential_services = ['blockchain', 'p2p_network', 'api_server']
+    
+        while time.time() - start_time < timeout:
+            ready = True
+            for service in essential_services:
+                if not self.monitor.services[service]['status']:
+                    ready = False
+                    logger.info(f"Waiting for {service} to start...")
+                    break
+        
+            if ready:
+                return True
+            
+            time.sleep(1)
+    
+        return False
 
     def is_ready(self):
         """Check if all services are ready"""
@@ -294,7 +312,6 @@ def show_menu(node):
         else:
             print("Invalid option, try again")
 
-# تغییرات در بخش main()
 def main():
     parser = argparse.ArgumentParser(description="Blockchain Node")
     parser.add_argument('--host', default='0.0.0.0', help="Host address")
@@ -311,6 +328,8 @@ def main():
         api_port=args.api_port
     )
     
+    time.sleep(2)
+
     # Start services
     node.start()
     
@@ -319,11 +338,31 @@ def main():
     startup_checks = 0
     max_startup_checks = 10
     
-    if not node.wait_for_services(timeout=startup_timeout):
-        logger.error("Some Services failed to start within timeout period")
-
+    try:
+            if not node.wait_for_services(timeout=30):
+                # گزارش دقیق سرویس‌های مشکل‌دار
+                report = node.monitor.get_status_report()
+                failed_services = [name for name, svc in report['services'].items() 
+                                if not svc['status']]
+                
+                logger.error(f"Services failed to start: {', '.join(failed_services)}")
+                logger.error("Possible causes:")
+                
+                if 'p2p_network' in failed_services:
+                    logger.error("- P2P port may be in use or blocked")
+                if 'api_server' in failed_services:
+                    logger.error("- API port may be in use or invalid")
+                if 'blockchain' in failed_services:
+                    logger.error("- Blockchain initialization failed")
+                
+                node.stop()
+                sys.exit(1)
+                
+    except KeyboardInterrupt:
+        logger.info("Startup interrupted by user")
         node.stop()
-        sys.exit(1)
+        sys.exit(0)
+
 
     # نمایش پیوند پیشرونده
     print("Initializing blockchain node...")
