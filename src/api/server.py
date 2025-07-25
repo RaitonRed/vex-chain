@@ -9,6 +9,53 @@ from src.utils.logger import logger
 app = Flask(__name__)
 blockchain = Blockchain()
 
+
+# Global references
+blockchain = None
+mempool = None
+p2p_network = None
+
+def create_app(blockchain_instance, mempool_instance, network_instance):
+    global blockchain, mempool, p2p_network
+    blockchain = blockchain_instance
+    mempool = mempool_instance
+    p2p_network = network_instance
+    
+    app = Flask(__name__)
+    return app
+
+app = create_app(blockchain, mempool, p2p_network)
+
+@app.route('/mine', methods=['POST'])
+def mine_block_post():
+    transactions = mempool.get_transactions()
+    
+    if not transactions:
+        return jsonify({'error': 'No transactions to mine'}), 400
+    
+    try:
+        validator_private_key = ec.generate_private_key(ec.SECP256K1())
+        new_block = blockchain.add_block(transactions, validator_private_key)
+        
+        if new_block:
+            # Broadcast new block to network
+            p2p_network.broadcast_block(new_block)
+            
+            # Clear mined transactions
+            mempool.remove_transactions([tx.tx_hash for tx in transactions])
+            
+            return jsonify({
+                'status': 'success',
+                'block': {
+                    'index': new_block.index,
+                    'hash': new_block.hash,
+                }
+            }), 201
+            
+    except Exception as e:
+        logger.error(f"Mining failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/')
 def home():
     return jsonify({

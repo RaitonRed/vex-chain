@@ -2,6 +2,7 @@ from typing import List, Dict
 from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
 from src.utils.database import db_connection
+from src.p2p.network import P2PNetwork
 import json
 import time
 import sqlite3
@@ -10,6 +11,7 @@ class Mempool:
     def __init__(self):
         self.transactions: Dict[str, Transaction] = {}
         self.max_size = 1000
+        self.p2p_network = P2PNetwork
         # بارگذاری فقط در صورتی که جدول mempool وجود دارد
         try:
             self._load_from_db()
@@ -42,6 +44,10 @@ class Mempool:
             if len(self.transactions) >= self.max_size:
                 logger.warning("Mempool is full, transaction rejected")
                 return False
+            
+            if tx.tx_hash not in self.transactions:
+                if hasattr(self, 'p2p_network'):
+                    self.p2p_network.broadcast_transaction(tx)
             
             # ذخیره در حافظه
             self.transactions[tx.tx_hash] = tx

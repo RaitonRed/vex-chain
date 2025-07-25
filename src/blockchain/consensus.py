@@ -1,6 +1,6 @@
+# consensus.py
 import random
 from typing import List, Dict
-from src.blockchain.block import Block
 from src.utils.logger import logger
 from src.blockchain.validator_registry import ValidatorRegistry
 
@@ -21,28 +21,12 @@ class Consensus:
         return list(validators.keys())[0]
 
     @staticmethod
-    def validate_block(block: Block, previous_block: Block) -> bool:
-        """اعتبارسنجی کامل یک بلاک در PoS"""
-        if not block.verify_signature():
-            logger.error(f"Invalid block signature for block {block.index}")
-            return False
-            
-        if block.hash != block.calculate_hash():
-            logger.error(f"Invalid block hash for block {block.index}")
-            return False
-            
-        if block.previous_hash != previous_block.hash:
-            logger.error(f"Previous hash mismatch in block {block.index}")
-            return False
-            
-        if not all(tx.tx_hash == tx.calculate_hash() for tx in block.transactions):
-            logger.error(f"Invalid transaction hash in block {block.index}")
-            return False
-            
-        return True
+    def validate_block(block: 'Block', previous_block: 'Block') -> bool:
+        """اعتبارسنجی کامل یک بلاک در PoS (با استفاده از متد is_valid خود بلاک)"""
+        return block.is_valid(previous_block)
 
     @staticmethod
-    def is_chain_valid(chain: List[Block]) -> bool:
+    def is_chain_valid(chain: List['Block']) -> bool:
         """اعتبارسنجی کامل یک زنجیره در PoS"""
         if not chain:
             return False
@@ -58,7 +42,7 @@ class Consensus:
             current = chain[i]
             previous = chain[i-1]
             
-            if not Consensus.validate_block(current, previous):
+            if not current.is_valid(previous):
                 return False
                 
         return True

@@ -26,6 +26,20 @@ def init_db():
     with db_connection() as conn:
         cursor = conn.cursor()
         
+        # Reset tables to apply schema changes
+        cursor.executescript('''
+        PRAGMA foreign_keys = OFF;
+        
+        DROP TABLE IF EXISTS transactions;
+        DROP TABLE IF EXISTS blocks;
+        DROP TABLE IF EXISTS chain_state;
+        DROP TABLE IF EXISTS validators;
+        DROP TABLE IF EXISTS stakes;
+        DROP TABLE IF EXISTS mempool;
+        
+        PRAGMA foreign_keys = ON;
+        ''')
+
         # ایجاد جداول و ایندکس‌ها
         cursor.executescript('''
         -- جدول بلاک‌ها
@@ -34,10 +48,12 @@ def init_db():
             "index" INTEGER NOT NULL UNIQUE,
             timestamp REAL NOT NULL,
             previous_hash TEXT NOT NULL,
-            nonce INTEGER NOT NULL,
+            nonce INTEGER NOT NULL DEFAULT 0,
             hash TEXT NOT NULL UNIQUE,
             difficulty INTEGER NOT NULL,
-            validator TEXT
+            validator TEXT,
+            stake_amount REAL,
+            signature TEXT
         );
         
         -- جدول تراکنش‌ها
@@ -156,9 +172,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_contract_events ON contract_events (contract_address, event_name);
                              
         CREATE INDEX IF NOT EXISTS idx_gas_usage_tx ON gas_usage(tx_hash);
-                             
-        ALTER TABLE contracts ADD COLUMN gas_limit INTEGER DEFAULT 1000000;
-        ALTER TABLE contracts ADD COLUMN last_used REAL DEFAULT 0;
         ''')
         
         # ایجاد جدول وضعیت زنجیره (برای ذخیره آخرین حالت)

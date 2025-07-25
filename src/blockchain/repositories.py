@@ -7,62 +7,67 @@ from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
 
 class BlockRepository:
-    """ذخیره و بازیابی بلاک‌ها از دیتابیس"""
-    
     @staticmethod
     def save_block(block: Block) -> int:
-        """ذخیره بلاک در دیتابیس و بازگرداندن ID"""
         with db_connection() as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute('''
-                INSERT INTO blocks ("index", timestamp, previous_hash, nonce, hash, difficulty)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO blocks (
+                    "index", timestamp, previous_hash, 
+                    hash, nonce, difficulty, 
+                    validator, stake_amount, signature
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     block.index,
                     block.timestamp,
                     block.previous_hash,
+                    block.hash,
                     block.nonce,
-                    block.hash,  # اینجا hash پس از محاسبه ذخیره می‌شود
-                    block.difficulty
+                    block.difficulty,
+                    block.validator,
+                    block.stake_amount,
+                    block.signature
                 ))
                 conn.commit()
                 return cursor.lastrowid
             except sqlite3.IntegrityError as e:
-                if "UNIQUE constraint failed: blocks.index" in str(e):
-                    logger.warning(f"Block {block.index} already exists")
-                raise
+                # ... error handling ...
+                print(f"Error while saving block: {e}")
 
     @staticmethod
     def get_block_by_index(index: int) -> Optional[Block]:
-        """بازیابی بلاک بر اساس شماره ایندکس"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM blocks WHERE "index" = ?', (index,))
             row = cursor.fetchone()
-        
+            
             if not row:
                 return None
             
-            transactions = TransactionRepository.get_transactions_by_block_id(row[0])
-
-
-            # ایجاد بلاک با استفاده از هش ذخیره شده در دیتابیس
+            # Get column names to handle schema changes
+            cursor.execute("PRAGMA table_info(blocks)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # Map columns to values
+            row_dict = dict(zip(columns, row))
+            
+            transactions = TransactionRepository.get_transactions_by_block_id(row_dict['id'])
+            
             block = Block(
-                index=row[1],
-                timestamp=row[2],
+                index=row_dict['index'],
+                timestamp=row_dict['timestamp'],
                 transactions=transactions,
-                previous_hash=row[3],
-                nonce=row[4],
-                difficulty=row[6]
+                previous_hash=row_dict['previous_hash'],
+                nonce=row_dict['nonce'],
+                difficulty=row_dict['difficulty'],
+                validator=row_dict.get('validator', ''),
+                stake_amount=row_dict.get('stake_amount', 0),
+                signature=row_dict.get('signature', '')
             )
-        
-            # استفاده از هش ذخیره شده به جای محاسبه مجدد
-            block.hash = row[5]
-            block.validator = row[7] if len(row) > 7 else ""
-        
+            block.hash = row_dict['hash']
             return block
-    
+            
     @staticmethod
     def get_blocks_paginated(page: int = 1, per_page: int = 10) -> List[Block]:
         """بازیابی بلاک‌ها به صورت صفحه‌بندی شده"""

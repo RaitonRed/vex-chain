@@ -1,16 +1,13 @@
 import json
 import hashlib
-import time
 import binascii
 from dataclasses import dataclass, field
-from typing import List
-from cryptography.fernet import Fernet
+from typing import List, Dict, Any
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
 from cryptography.exceptions import InvalidSignature
-from src.blockchain.validator_registry import ValidatorRegistry
 from src.utils.logger import logger
+from src.blockchain.validator_registry import ValidatorRegistry
 
 @dataclass
 class Block:
@@ -18,24 +15,22 @@ class Block:
     timestamp: float
     transactions: List['Transaction']
     previous_hash: str
+    validator: str = ""  # Address of the validator
+    signature: str = ""  # Digital signature of the block
+    stake_amount: float = 0  # Stake amount used for validation
+    difficulty: int = 4 
     nonce: int = 0
-    difficulty: int = 4
-    hash: str = field(init=False)
-    transactions_hash: str = field(init=False)
-    validator: str = ""
-    signature: str = ""
-    stake_amount: float = 0
-    
+    hash: str = field(init=False)  # Will be set by calculate_hash
+    transactions_hash: str = field(init=False)  # Hash of transactions
 
     def __post_init__(self):
-        self.timestamp = self.timestamp or time.time()
+        """Initialize block and calculate hashes"""
         self.transactions_hash = self.calculate_transactions_hash()
         if not hasattr(self, 'hash') or not self.hash:
             self.hash = self.calculate_hash()
 
-   
     def sign_block(self, private_key: ec.EllipticCurvePrivateKey, stake: float):
-        """امضای بلاک با کلید خصوصی ولیدیتور"""
+        """Sign the block with the validator's private key"""
         self.validator = ValidatorRegistry.get_validator_address(private_key)
         self.stake_amount = stake
         signature = private_key.sign(
@@ -45,7 +40,7 @@ class Block:
         self.signature = binascii.hexlify(signature).decode()
 
     def verify_signature(self) -> bool:
-        """بررسی امضای بلوک با کلید عمومی ولیدیتور"""
+        """Verify the block signature with the validator's public key"""
         if not self.signature or not self.validator:
             logger.error("Missing signature or validator")
             return False
@@ -62,67 +57,90 @@ class Block:
         except (InvalidSignature, ValueError, TypeError) as e:
             logger.error(f"Block signature verification failed: {e}")
             return False
-        
-    def sign_block(self, private_key: ec.EllipticCurvePrivateKey):
-        signature = private_key.sign(
-                self.hash.encode(),
-                ec.ECDSA(hashes.SHA256())
-        )
-        self.signature = binascii.hexlify(signature).decode()
 
     def calculate_transactions_hash(self) -> str:
+        """Calculate hash of all transactions in the block"""
         if not self.transactions:
             return hashlib.sha256(b'').hexdigest()
+        
         tx_hashes = [tx.tx_hash for tx in self.transactions]
         return hashlib.sha256(''.join(tx_hashes).encode()).hexdigest()
 
     def calculate_hash(self) -> str:
-        """محاسبه هش بلاک با فیلدهای ثابت"""
+        """Calculate the block hash including PoS fields"""
         block_data = {
             'index': self.index,
-            'timestamp': int(self.timestamp),  # ثابت کردن timestamp
+            'timestamp': int(self.timestamp),
             'transactions_hash': self.transactions_hash,
             'previous_hash': self.previous_hash,
-            'nonce': self.nonce,
-            'difficulty': self.difficulty
+            'validator': self.validator,
+            'stake_amount': self.stake_amount
         }
         return hashlib.sha256(
             json.dumps(block_data, sort_keys=True).encode()
         ).hexdigest()
 
-    def to_dict(self) -> dict:
-        """تبدیل بلاک به دیکشنری برای ذخیره در دیتابیس"""
+    def is_valid(self, previous_block: 'Block') -> bool:
+        """Validate block structure and content"""
+        if self.index != previous_block.index + 1:
+            logger.error(f"Block index mismatch: {self.index} vs {previous_block.index + 1}")
+            return False
+            
+        if self.previous_hash != previous_block.hash:
+            logger.error(f"Previous hash mismatch: {self.previous_hash} vs {previous_block.hash}")
+            return False
+            
+        if self.hash != self.calculate_hash():
+            logger.error(f"Block hash invalid: {self.hash} vs {self.calculate_hash()}")
+            return False
+            
+        if not self.verify_signature():
+            logger.error(f"Invalid block signature for block {self.index}")
+            return False
+            
+        # اعتبارسنجی تراکنش‌ها
+        for tx in self.transactions:
+            if not tx.is_valid():
+                logger.error(f"Invalid transaction in block: {tx.tx_hash}")
+                return False
+                
+        return True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert block to dictionary for network transmission"""
         return {
             'index': self.index,
             'timestamp': self.timestamp,
+            'transactions': [tx.to_dict() for tx in self.transactions],
             'previous_hash': self.previous_hash,
-            'nonce': self.nonce,
             'hash': self.hash,
-            'difficulty': self.difficulty
+            'validator': self.validator,
+            'stake_amount': self.stake_amount,
+            'signature': self.signature
         }
-    
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Block':
+        """Create Block from dictionary received from network"""
+        from src.blockchain.transaction import Transaction
+        transactions = [Transaction.from_dict(tx) for tx in data['transactions']]
+        
+        block = cls(
+            index=data['index'],
+            timestamp=data['timestamp'],
+            transactions=transactions,
+            previous_hash=data['previous_hash'],
+            validator=data['validator'],
+            stake_amount=data['stake_amount'],
+            signature=data['signature']
+        )
+        
+        # Set hash from network data
+        block.hash = data['hash']
+        block.transactions_hash = block.calculate_transactions_hash()
+        
+        return block
+
     def __repr__(self) -> str:
         return (f"<Block index={self.index}, hash={self.hash[:10]}..., "
-                f"txs={len(self.transactions)}, nonce={self.nonce}>")
-    
-    def verify_signature_with_registry(self, registry) -> bool:
-        """بررسی امضا با استفاده از رجیستری ولیدیتورها"""
-        if not self.signature or not self.validator:
-            return False
-
-        try:
-            public_key = registry.get_public_key(self.validator)
-            signature_bytes = binascii.unhexlify(self.signature)
-            
-            r, s = decode_dss_signature(signature_bytes)
-            der_signature = encode_dss_signature(r, s)
-            
-            public_key.verify(
-                der_signature,
-                self.hash.encode(),
-                ec.ECDSA(hashes.SHA256())
-            )
-            return True
-        except (InvalidSignature, ValueError, TypeError) as e:
-            logger.error(f"Signature verification failed: {e}")
-            return False
+                f"txs={len(self.transactions)}, validator={self.validator[:6]}>")
