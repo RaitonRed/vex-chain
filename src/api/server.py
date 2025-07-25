@@ -136,40 +136,19 @@ def add_transaction():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-@app.route('/mine', methods=['POST'])
-def mine_block():
+@app.route('/health', methods=['GET'])
+def health_check():
+    if not hasattr(app, 'node') or app.node is None:
+        return jsonify({"status": "NOT READY"}), 503
     
-    # دریافت تراکنش‌ها از mempool
-    mempool = Mempool()
-    transactions = mempool.get_transactions()
-    
-    if not transactions:
-        return jsonify({'error': 'No transactions to mine'}), 400
-    
-    try:
-        # ساخت کلید خصوصی برای ولیدیتور (در محیط واقعی باید از کلید واقعی استفاده شود)
-        validator_private_key = ec.generate_private_key(ec.SECP256K1())
-        
-        # اضافه کردن بلاک جدید
-        new_block = blockchain.add_block(transactions, validator_private_key)
-        if not new_block:
-            return jsonify({'error': 'Failed to mine block'}), 500
-        
-        # حذف تراکنش‌های پردازش شده از mempool
-        mempool.remove_transactions([tx.tx_hash for tx in transactions])
-        
-        return jsonify({
-            'status': 'success',
-            'block': {
-                'index': new_block.index,
-                'hash': new_block.hash,
-                'transaction_count': len(new_block.transactions)
-            }
-        }), 201
-        
-    except Exception as e:
-        logger.error(f"Mining failed: {e}")
-        return jsonify({'error': str(e)}), 500
+    report = app.node.monitor.get_status_report()
+    status_code = 200 if report['all_ready'] else 503
+
+    return jsonify({
+        "status": "READY" if report['all_ready'] else "NOT READY",
+        "services": report['services'],
+        "uptime": report['uptime']
+    }), status_code
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

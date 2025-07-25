@@ -13,6 +13,7 @@ from src.blockchain.stake_manager import StakeManager
 from src.blockchain.validator_registry import ValidatorRegistry
 from src.blockchain.consensus import Consensus
 from src.blockchain.contract.contract_manager import ContractManager
+from src.utils.service_monitor import ServiceMonitor
 from cryptography.hazmat.primitives.asymmetric import ec
 
 class BlockchainNode:
@@ -21,6 +22,9 @@ class BlockchainNode:
         self.p2p_port = p2p_port
         self.api_port = api_port
         
+        self.monitor = ServiceMonitor()
+        self._service_ready = threading.Event()
+
         # Initialize core components
         self.blockchain = Blockchain()
         self.mempool = Mempool()
@@ -29,6 +33,12 @@ class BlockchainNode:
             port=p2p_port,
             blockchain=self.blockchain,
         )
+
+        # Service Status
+        self.services_ready = {
+            'p2p': False,
+            'api': False
+        }
         
         # Set cross-references
         self.mempool.p2p_network = self.p2p_network
@@ -65,8 +75,52 @@ class BlockchainNode:
         )
         self.api_thread.start()
 
+        # Start health monitoring
+        self.health_thread = threading.Thread(
+            target=self._monitor_services,
+            daemon=True
+        )
+        self.health_thread.start()
+
         logger.info(f"Node started on {self.host}")
         logger.info(f"P2P Port: {self.p2p_port} | API Port: {self.api_port}")
+
+    def _start_p2p_with_monitoring(self):
+        try:
+            self.p2p_network.listen_for_peers()
+            logger.info("P2P service started successfully")
+        except Exception as e:
+            logger.error(f"P2P service failed: {e}")
+            self.stop()
+    
+    def _start_api_with_monitoring(self):
+        try:
+            flask_app.run(
+                host=self.host,
+                port=self.api_port,
+                debug=False,
+                use_reloader=False
+            )
+            logger.info("API service started successfully")
+        except Exception as e:
+            logger.error(f"API service failed: {e}")
+            self.stop()
+
+    def _monitor_services(self):
+        while self._running:
+            if self.monitor.check_all_services(self):
+                self._service_ready.set()
+            else:
+                self._service_ready.clear()
+            time.sleep(1)
+
+    def wait_for_services(self, timeout=30):
+        """Wait for all services to become ready"""
+        return self._service_ready.wait(timeout=timeout)
+
+    def is_ready(self):
+        """Check if all services are ready"""
+        return self._service_ready.is_set()
 
     def stop(self):
         """Gracefully stop the node"""
@@ -240,6 +294,7 @@ def show_menu(node):
         else:
             print("Invalid option, try again")
 
+# تغییرات در بخش main()
 def main():
     parser = argparse.ArgumentParser(description="Blockchain Node")
     parser.add_argument('--host', default='0.0.0.0', help="Host address")
@@ -258,6 +313,42 @@ def main():
     
     # Start services
     node.start()
+    
+    # ایجاد مکانیزم انتظار برای اطمینان از اجرای کامل کدها
+    startup_timeout = 10  # ثانیه
+    startup_checks = 0
+    max_startup_checks = 10
+    
+    if not node.wait_for_services(timeout=startup_timeout):
+        logger.error("Some Services failed to start within timeout period")
+
+        node.stop()
+        sys.exit(1)
+
+    # نمایش پیوند پیشرونده
+    print("Initializing blockchain node...")
+    if not args.no_menu:
+        show_menu(node)
+    else:
+        logger.info("Running in headless mode...")
+        try:
+            while True:
+                if int(time.time()) % 10 == 0:
+                    logger.info(node.monitor.get_status_report())
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt! Killing Node...")
+            node.stop()
+    
+    # اگر سرویس‌ها آماده نشدند
+    if startup_checks >= max_startup_checks:
+        logger.error("Failed to start all services within timeout")
+        node.stop()
+        sys.exit(1)
+    
+    # پاک کردن خطوط پیشرونده
+    sys.stdout.write("\033[F" * (max_startup_checks + 2))  # برگشت به ابتدا
+    sys.stdout.write("\033[K")  # پاک کردن خط
     
     # Show menu or run in background
     if not args.no_menu:

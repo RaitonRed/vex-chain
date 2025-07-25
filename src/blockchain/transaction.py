@@ -19,7 +19,7 @@ class Transaction:
     timestamp: float = field(default_factory=time.time)
     signature: Optional[str] = None
     tx_hash: str = field(default="", init=False)
-    nonce: int
+    nonce: int = 0
 
     # Smart Contracts
     contract_type: str = "NORMAL"  # NORMAL, CREATE, CALL
