@@ -9,29 +9,41 @@ class MessageHandler:
         self.blockchain = blockchain
         self.mempool = mempool
     
-    def handle_message(self, message, addr):
+    def handle_message(self, message, addr, block_data):
         """Handle incoming messages from peers"""
         try:
             msg_type = message["type"]
+
+                    # Validate and add block
+            last_block = self.blockchain.get_last_block()
+            if Block.index > last_block.index:
+                if self.blockchain.add_block([], validator_private_key=None, external_block=Block):
+                    logger.info(f"Added new block #{Block.index} from network")
+                
+                    # Broadcast to other peers
+                    self.network.broadcast_message({
+                        "type": "new_block",
+                        "data": block_data
+                    })
             
-            if msg_type == "get_blockchain":
-                self.handle_get_blockchain(addr)
-            elif msg_type == "blockchain":
-                self.handle_blockchain(message["data"])
-            elif msg_type == "get_mempool":
-                self.handle_get_mempool(addr)
-            elif msg_type == "mempool":
-                self.handle_mempool(message["data"])
-            elif msg_type == "new_block":
-                self.handle_new_block(message["data"])
-            elif msg_type == "new_transaction":
-                self.handle_new_transaction(message["data"])
-            elif msg_type == "get_peers":
-                self.handle_get_peers(addr)
-            elif msg_type == "peers":
-                self.network.peer_discovery.handle_peers_response(message["data"])
-            else:
-                logger.warning(f"Unknown message type: {msg_type}")
+                if msg_type == "get_blockchain":
+                    self.handle_get_blockchain(addr)
+                elif msg_type == "blockchain":
+                    self.handle_blockchain(message["data"])
+                elif msg_type == "get_mempool":
+                    self.handle_get_mempool(addr)
+                elif msg_type == "mempool":
+                    self.handle_mempool(message["data"])
+                elif msg_type == "new_block":
+                    self.handle_new_block(message["data"])
+                elif msg_type == "new_transaction":
+                    self.handle_new_transaction(message["data"])
+                elif msg_type == "get_peers":
+                    self.handle_get_peers(addr)
+                elif msg_type == "peers":
+                    self.network.peer_discovery.handle_peers_response(message["data"])
+                else:
+                    logger.warning(f"Unknown message type: {msg_type}")
         except Exception as e:
             logger.error(f"Error handling message from {addr}: {e}")
     

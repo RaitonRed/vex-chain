@@ -5,18 +5,18 @@ import time
 from src.p2p.message_handler import MessageHandler
 from src.p2p.peer_discovery import PeerDiscovery
 from src.blockchain.chain import Blockchain
-from src.blockchain.mempool import Mempool
 from src.utils.logger import logger
 
+
 class P2PNetwork:
-    def __init__(self, host, port, blockchain: Blockchain, mempool: Mempool):
+    def __init__(self, host, port, blockchain: Blockchain):
         self.host = host
         self.port = port
         self.blockchain = blockchain
-        self.mempool = mempool
+        self.mempool = None
         self.peers = set()
         self.peer_discovery = PeerDiscovery(self)
-        self.message_handler = MessageHandler(self, blockchain, mempool)
+        self.message_handler = MessageHandler(self, blockchain, self.mempool)
         
         # Start listening socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -30,6 +30,17 @@ class P2PNetwork:
         threading.Thread(target=self.listen_for_peers, daemon=True).start()
         threading.Thread(target=self.peer_discovery.start, daemon=True).start()
     
+    def set_blockchain(self, blockchain):
+        """Set blockchain reference after initialization"""
+        self.blockchain = blockchain
+        self.message_handler.blockchain = blockchain
+
+    def set_mempool(self, mempool):
+        """Set MemPool reference after initialization"""
+        self.mempool = mempool
+        if self.message_handler:
+            self.message_handler.mempool = mempool
+
     def listen_for_peers(self):
         """Listen for incoming peer connections"""
         while True:
@@ -89,13 +100,8 @@ class P2PNetwork:
             ).start()
             
             # Request blockchain and mempool
-            self.send_message({
-                "type": "get_blockchain"
-            }, (host, port))
-            
-            self.send_message({
-                "type": "get_mempool"
-            }, (host, port))
+            self.send_message({"type": "get_blockchain"}, (host, port))
+            self.send_message({"type": "get_mempool"}, (host, port))
             
         except Exception as e:
             logger.error(f"Failed to connect to {host}:{port}: {e}")
