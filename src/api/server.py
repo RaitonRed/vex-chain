@@ -3,12 +3,12 @@ from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
 from src.blockchain.repositories import BlockRepository, TransactionRepository
 from src.blockchain.mempool import Mempool
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 
 app = Flask(__name__)
 blockchain = Blockchain()
-
 
 # Global references
 blockchain = None
@@ -33,8 +33,16 @@ def mine_block_post():
     if not transactions:
         return jsonify({'error': 'No transactions to mine'}), 400
     
+    private_key_pem = request.headers.get('X-Private-Key')
+    if not private_key_pem:
+        return jsonify({'error': 'Private key required'}), 401
+    
     try:
-        validator_private_key = ec.generate_private_key(ec.SECP256K1())
+        validator_private_key = serialization.load_pem_private_key(
+            private_key_pem.encode(),
+            password=None,
+        )
+
         new_block = blockchain.add_block(transactions, validator_private_key)
         
         if new_block:
@@ -53,8 +61,7 @@ def mine_block_post():
             }), 201
             
     except Exception as e:
-        logger.error(f"Mining failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Invalid private key'}), 401
 
 @app.route('/')
 def home():

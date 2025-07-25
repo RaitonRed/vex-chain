@@ -160,9 +160,16 @@ class Blockchain:
             
         # اعتبارسنجی تراکنش‌ها
         for tx in block.transactions:
-            if not tx.is_valid():
-                logger.error(f"Invalid transaction in external block: {tx.tx_hash}")
-                return None
+                if not tx.is_valid():
+                    logger.error(f"Invalid transaction in external block: {tx.tx_hash}")
+                    return None
+                
+                # بررسی اینکه فرستنده موجودی کافی دارد
+                if tx.contract_type == "NORMAL":
+                    sender_balance = StateDB().get_balance(tx.sender)
+                    if sender_balance < tx.amount:
+                        logger.error(f"Insufficient balance for {tx.sender}")
+                        return None
         
         # اجرای قراردادهای هوشمند در بلاک دریافتی
         vm = SmartContractVM(StateDB())

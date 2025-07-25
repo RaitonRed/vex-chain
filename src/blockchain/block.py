@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.exceptions import InvalidSignature
 from src.utils.logger import logger
 from src.blockchain.validator_registry import ValidatorRegistry
@@ -46,18 +47,24 @@ class Block:
             return False
 
         try:
-            public_key = ValidatorRegistry.get_public_key(self.validator)
+            public_key_pem = ValidatorRegistry.get_public_key_pem(self.validator)
+            if not public_key_pem:
+                logger.error(f"No public key found for validator: {self.validator}")
+                return False
+                
+            public_key = load_pem_public_key(public_key_pem.encode())
             signature_bytes = binascii.unhexlify(self.signature)
+            
             public_key.verify(
                 signature_bytes,
                 self.hash.encode(),
                 ec.ECDSA(hashes.SHA256())
             )
             return True
-        except (InvalidSignature, ValueError, TypeError) as e:
+        except Exception as e:
             logger.error(f"Block signature verification failed: {e}")
             return False
-
+        
     def calculate_transactions_hash(self) -> str:
         """Calculate hash of all transactions in the block"""
         if not self.transactions:

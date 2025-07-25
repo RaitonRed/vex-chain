@@ -1,4 +1,5 @@
 import hashlib
+from typing import Optional
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -49,3 +50,12 @@ class ValidatorRegistry:
             PublicFormat.SubjectPublicKeyInfo
         )
         return hashlib.sha256(public_bytes).hexdigest()[:40]
+    
+    @staticmethod
+    def get_public_key_pem(address: str) -> Optional[str]:
+        """دریافت کلید عمومی ولیدیتور از آدرس"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT public_key_pem FROM validators WHERE address = ?', (address,))
+            row = cursor.fetchone()
+            return row[0] if row else None

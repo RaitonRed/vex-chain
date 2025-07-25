@@ -5,8 +5,9 @@ import binascii
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.exceptions import InvalidSignature
+from src.blockchain.validator_registry import ValidatorRegistry
 from src.utils.logger import logger
 
 @dataclass
@@ -72,17 +73,26 @@ class Transaction:
         if not self.signature:
             logger.error("No signature present")
             return False
-            
-        # First, validate the transaction hash
-        current_hash = self.calculate_hash()
-        if self.tx_hash != current_hash:
-            logger.error(f"Transaction hash mismatch: {self.tx_hash} vs {current_hash}")
+        
+        if self.tx_hash != self.calculate_hash():
+            logger.error(f"Transaction hash mismatch: {self.tx_hash} vs {self.calculate_hash()}")
             return False
-            
+        
         try:
-            # In a real implementation, we'd get public key from sender's address
-            # For simplicity, we'll assume signature is valid if it's present
-            # This should be replaced with actual cryptographic verification
+            # Get public key from sender address
+            public_key_pem = ValidatorRegistry.get_public_key_pem(self.sender)
+            if not public_key_pem:
+                logger.error(f"No public key found for sender: {self.sender}")
+                return False
+            
+            public_key = load_pem_public_key(public_key_pem.encode())
+            signature_bytes = binascii.unhexlify(self.signature)
+        
+            public_key.verify(
+                signature_bytes,
+                self.tx_hash.encode(),
+                ec.ECDSA(hashes.SHA256())
+            )
             return True
         except Exception as e:
             logger.error(f"Signature verification failed: {e}")
