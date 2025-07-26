@@ -9,7 +9,7 @@ class PeerDiscovery:
         self.known_peers = set()
         self.bootstrap_nodes = [
             ("localhost", 6000),
-            ("127.0.0.1", 6001)
+            # ("127.0.0.1", 6001)
         ]
         self.min_peers = 1
     

@@ -61,3 +61,24 @@ def prompt_contract_address():
 def print_error(message):
     """Helper for error messages"""
     print(f"{theme.ERROR}❌ {message}{theme.RESET}")
+
+def prompt_json_data(prompt_text):
+    """Get JSON data from user"""
+    while True:
+        data_str = input(f"{theme.PROMPT}{prompt_text} (or empty for {{}}): {theme.INPUT}").strip()
+        if not data_str:
+            return {}
+        try:
+            return json.loads(data_str)
+        except json.JSONDecodeError:
+            print_error("Invalid JSON format!")
+
+def prompt_yes_no(prompt_text):
+    """Get yes/no answer"""
+    while True:
+        answer = input(f"{theme.PROMPT}{prompt_text} (y/n): {theme.INPUT}").lower().strip()
+        if answer in ['y', 'yes']:
+            return True
+        if answer in ['n', 'no']:
+            return False
+        print_error("Please enter y or n")

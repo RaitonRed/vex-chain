@@ -1,163 +1,86 @@
+# src/blockchain/transaction.py
 import json
-import hashlib
 import time
-import binascii
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from cryptography.hazmat.primitives.asymmetric import ec
-from src.blockchain.validator_registry import ValidatorRegistry
-from src.utils.logger import logger
+from typing import Dict, Any, Optional
+from src.utils.crypto import sign_data, verify_signature
 
 @dataclass
 class Transaction:
+    """Base transaction class"""
+    # Required fields (no defaults)
     sender: str
     recipient: str
     amount: float
+    
+    # Fields with defaults come after
     data: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
-    signature: Optional[str] = None
-    tx_hash: str = field(default="", init=False)
-    nonce: int = 0
-
-    # Smart Contracts
-    contract_type: str = "NORMAL"  # NORMAL, CREATE, CALL
-    contract_code: Optional[str] = None
-    contract_method: Optional[str] = None
-    contract_args: Dict[str, Any] = field(default_factory=dict)
-    gas_limit: int = 1000000
-    gas_price: float = 0.001
-    contract_address: Optional[str] = None
-    contract_output: Optional[Any] = None  # Result of contract execution
+    signature: str = field(default="")
+    tx_hash: Optional[str] = field(default=None)
+    contract_type: str = field(default="NORMAL")
 
     def __post_init__(self):
-        """Initialize transaction and calculate hash"""
-        if not self.tx_hash:
+        if self.tx_hash is None:
             self.tx_hash = self.calculate_hash()
 
-    def calculate_hash(self) -> str:
-        """Calculate the transaction hash"""
-        tx_data = {
-            'sender': self.sender,
-            'recipient': self.recipient,
-            'amount': self.amount,
-            'data': self.data,
-            'timestamp': self.timestamp,
-            'contract_type': self.contract_type,
-            'contract_code': self.contract_code,
-            'contract_method': self.contract_method,
-            'contract_args': self.contract_args,
-            'gas_limit': self.gas_limit,
-            'gas_price': self.gas_price,
-            'contract_address': self.contract_address,
-            'nonce': self.nonce
-        }
-        return hashlib.sha256(
-            json.dumps(tx_data, sort_keys=True).encode()
-        ).hexdigest()
-
-    def sign(self, private_key: ec.EllipticCurvePrivateKey) -> None:
-        """Sign the transaction with private key"""
-        self.tx_hash = self.calculate_hash()  # Recalculate to ensure consistency
-        try:
-            signature = private_key.sign(
-                self.tx_hash.encode(),
-                ec.ECDSA(hashes.SHA256())
-            )
-            self.signature = binascii.hexlify(signature).decode()
-        except Exception as e:
-            logger.error(f"Transaction signing failed: {e}")
-            raise
-
-    def verify_signature(self) -> bool:
-        """Verify the transaction signature with public key"""
-        if not self.signature:
-            logger.error("No signature present")
-            return False
-        
-        if self.tx_hash != self.calculate_hash():
-            logger.error(f"Transaction hash mismatch: {self.tx_hash} vs {self.calculate_hash()}")
-            return False
-        
-        try:
-            # Get public key from sender address
-            public_key_pem = ValidatorRegistry.get_public_key_pem(self.sender)
-            if not public_key_pem:
-                logger.error(f"No public key found for sender: {self.sender}")
-                return False
-            
-            public_key = load_pem_public_key(public_key_pem.encode())
-            signature_bytes = binascii.unhexlify(self.signature)
-        
-            public_key.verify(
-                signature_bytes,
-                self.tx_hash.encode(),
-                ec.ECDSA(hashes.SHA256())
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Signature verification failed: {e}")
-            return False
-
-    def is_valid(self) -> bool:
-        """Validate transaction structure and signature"""
-        if self.tx_hash != self.calculate_hash():
-            logger.error(f"Transaction hash invalid: {self.tx_hash} vs {self.calculate_hash()}")
-            return False
-            
-        if self.contract_type not in ["NORMAL", "CREATE", "CALL"]:
-            logger.error(f"Invalid contract type: {self.contract_type}")
-            return False
-            
-        if self.amount < 0:
-            logger.error(f"Negative amount: {self.amount}")
-            return False
-            
-        return self.verify_signature()
-
     def to_dict(self) -> Dict[str, Any]:
-        """Convert transaction to dictionary for network transmission"""
+        """Convert transaction to dictionary"""
         return {
-            'sender': self.sender,
-            'recipient': self.recipient,
-            'amount': self.amount,
-            'data': self.data,
-            'timestamp': self.timestamp,
-            'signature': self.signature,
-            'tx_hash': self.tx_hash,
-            'contract_type': self.contract_type,
-            'contract_code': self.contract_code,
-            'contract_method': self.contract_method,
-            'contract_args': self.contract_args,
-            'gas_limit': self.gas_limit,
-            'gas_price': self.gas_price,
-            'contract_address': self.contract_address,
-            'contract_output': self.contract_output
+            "tx_hash": self.tx_hash,
+            "sender": self.sender,
+            "recipient": self.recipient,
+            "amount": self.amount,
+            "data": self.data,
+            "timestamp": self.timestamp,
+            "signature": self.signature,
+            "contract_type": self.contract_type
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Transaction':
-        """Create Transaction from dictionary received from network"""
-        tx = cls(
+        """Create transaction from dictionary"""
+        return cls(
             sender=data['sender'],
             recipient=data['recipient'],
             amount=data['amount'],
-            data=data['data'],
+            data=data.get('data', {}),
             timestamp=data['timestamp'],
-            signature=data.get('signature'),
-            contract_type=data.get('contract_type', "NORMAL"),
-            contract_code=data.get('contract_code'),
-            contract_method=data.get('contract_method'),
-            contract_args=data.get('contract_args', {}),
-            gas_limit=data.get('gas_limit', 1000000),
-            gas_price=data.get('gas_price', 0.001),
-            contract_address=data.get('contract_address'),
-            contract_output=data.get('contract_output')
+            signature=data.get('signature', ''),
+            tx_hash=data.get('tx_hash'),
+            contract_type=data.get('contract_type', 'NORMAL')
         )
-        tx.tx_hash = data['tx_hash']  # Set hash from network data
-        return tx
 
-    def __repr__(self) -> str:
-        return (f"<Transaction {self.tx_hash[:8]}... "
-                f"from {self.sender[:6]} to {self.recipient[:6]}>")
+    def _calculate_hash(self, hash_data: Dict[str, Any]) -> str:
+        """Internal method for hash calculation"""
+        import hashlib
+        return hashlib.sha256(
+            json.dumps(hash_data, sort_keys=True).encode()
+        ).hexdigest()
+
+    def calculate_hash(self) -> str:
+        """Calculate transaction hash"""
+        return self._calculate_hash({
+            "sender": self.sender,
+            "recipient": self.recipient,
+            "amount": self.amount,
+            "data": self.data,
+            "timestamp": self.timestamp,
+            "contract_type": self.contract_type
+        })
+
+    def sign(self, private_key) -> None:
+        """Sign the transaction"""
+        self.signature = sign_data(private_key, self.tx_hash)
+        
+    def is_valid(self) -> bool:
+        """Verify transaction validity"""
+        if not self.tx_hash or self.tx_hash != self.calculate_hash():
+            return False
+        if self.amount < 0:
+            return False
+        return verify_signature(
+            self.sender,
+            self.signature,
+            self.tx_hash
+        )

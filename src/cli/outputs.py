@@ -1,3 +1,5 @@
+import time
+import json
 from tabulate import tabulate
 from src.cli.style import CLITheme
 
@@ -121,3 +123,20 @@ def print_warning(message):
 def print_info(message):
     """Print info message"""
     print(f"{theme.INFO}ℹ️ {message}{theme.RESET}")
+
+def display_transaction_details(tx):
+    """Display transaction details"""
+    print(f"\n{theme.SUBHEADER}Transaction Details:{theme.RESET}")
+    info = [
+        ["Transaction Hash", tx.tx_hash],
+        ["Sender", tx.sender],
+        ["Recipient", tx.recipient],
+        ["Amount", tx.amount],
+        ["Fee", getattr(tx, 'fee', 0)],
+        ["Timestamp", time.ctime(tx.timestamp)]
+    ]
+    print(tabulate(info, tablefmt="grid"))
+    
+    if hasattr(tx, 'data') and tx.data:
+        print(f"\n{theme.INFO}Additional Data:{theme.RESET}")
+        print(json.dumps(tx.data, indent=2))

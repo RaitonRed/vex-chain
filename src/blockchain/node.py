@@ -1,3 +1,4 @@
+import os
 import time
 import threading
 from src.blockchain.chain import Blockchain
@@ -7,6 +8,7 @@ from src.api.server import app as flask_app
 from src.utils.service_monitor import ServiceMonitor
 from src.utils.logger import logger
 
+
 class BlockchainNode:
     def __init__(self, host='0.0.0.0', p2p_port=6000, api_port=5000):
         """Initialize blockchain node with all core components"""
@@ -14,45 +16,74 @@ class BlockchainNode:
         self.p2p_port = p2p_port
         self.api_port = api_port
         
-        # Core components
-        self.blockchain = Blockchain()
-        self.mempool = Mempool()
-        self.p2p_network = P2PNetwork(
-            host=host,
-            port=p2p_port,
-            blockchain=self.blockchain
-        )
+        self.blockchain = None
+        self.mempool = None
+        self.p2p_network = None
         
         # Service monitoring
-        self.monitor = ServiceMonitor()
+        self.monitor = None
         self._services_ready = threading.Event()
         self._running = False
 
-        # Set cross-references
-        self._setup_dependencies()
+        # تنظیمات وابستگی‌ها را به بعد موکول می‌کنیم
+        # زیرا کامپوننت‌ها هنوز مقداردهی نشده‌اند
 
     def _setup_dependencies(self):
         """Establish cross-references between components"""
-        self.mempool.p2p_network = self.p2p_network
-        self.p2p_network.set_mempool(self.mempool)
-        self.blockchain.set_p2p_network(self.p2p_network)
+        # اطمینان حاصل کنید که همه کامپوننت‌ها مقداردهی شده‌اند
+        if self.mempool:
+            self.mempool.p2p_network = self.p2p_network
+        if self.p2p_network:
+            self.p2p_network.set_mempool(self.mempool)
+        if self.blockchain:
+            self.blockchain.set_p2p_network(self.p2p_network)
 
     def start(self):
-        """Start all node services"""
         if self._running:
-            logger.warning("Node is already running!")
+            print("⚠️ Node is already running!")
             return
 
-        self._running = True
-        logger.info("Starting node services...")
-
-        # Start services in separate threads
-        self._start_p2p_service()
-        self._start_api_service()
-        self._start_monitoring()
-
-        logger.info(f"Node services started on {self.host}")
-
+        try:
+            # بررسی دسترسی به پورت
+            if self.p2p_port < 1024 and os.geteuid() != 0:
+                raise PermissionError(f"Port {self.p2p_port} requires root privileges")
+            
+            # مقداردهی اولیه کامپوننت‌ها
+            print("🟢 Initializing blockchain...")
+            self.blockchain = Blockchain()
+            
+            print("🟢 Initializing mempool...")
+            self.mempool = Mempool()
+            
+            print("🟢 Starting P2P network...")
+            self.p2p_network = P2PNetwork(
+                host=self.host,
+                port=self.p2p_port,
+                blockchain=self.blockchain
+            )
+            
+            # تنظیم وابستگی‌ها بین کامپوننت‌ها
+            self._setup_dependencies()
+            
+            # شروع سرویس‌ها
+            print("🟢 Starting network services...")
+            self._start_p2p_service()
+            self._start_api_service()
+            self._start_monitoring()
+            
+            self._running = True
+            print("🟢 Node services started successfully")
+            return True
+        except OSError as e:
+            if "Address already in use" in str(e):
+                print(f"❌ Port {self.p2p_port} is already in use!")
+                print("   Please stop other nodes or use a different port")
+            logger.error(f"Startup failed: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error during startup: {e}")
+            return False
+    
     def _start_p2p_service(self):
         """Start P2P network service"""
         self.p2p_thread = threading.Thread(
