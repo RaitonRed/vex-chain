@@ -70,7 +70,6 @@ class NodeMenu:
 
             menu_item = self.commands[choice]
             
-            # Check conditions
             if menu_item.requires_ready_node and not self.node.is_ready():
                 print_error("Node services are not ready!")
                 continue
@@ -86,7 +85,6 @@ class NodeMenu:
                 print_error(f"Error: {str(e)}")
 
     def _display_header(self):
-        """Display node status header"""
         last_block = self.node.blockchain.get_last_block()
         status = (
             f"{self.theme.SUCCESS}✓ Online{self.theme.RESET}" 
@@ -104,19 +102,14 @@ class NodeMenu:
         print(f"\n{' | '.join(info)}\n")
 
     def _check_admin(self):
-        """Check admin privileges"""
-        # In real implementation should authenticate
         return True
-    
 
 def main():
     node = None
 
-    # Configure logging
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting blockchain node...")
     
-    # Parse command line arguments
     parser = argparse.ArgumentParser(description="Blockchain Node")
     parser.add_argument('--host', default='127.0.0.1', help="Host address")
     parser.add_argument('--p2p-port', type=int, default=2000, help="P2P port")
@@ -125,7 +118,6 @@ def main():
     
     args = parser.parse_args()
     
-    # Initialize node
     try:
         node = BlockchainNode(
             host=args.host,
@@ -133,19 +125,21 @@ def main():
             api_port=args.api_port
         )
         
-        # با استفاده از مقدار بازگشتی از start() وضعیت را بررسی کنید
-        if not node.start():
+        # فقط وضعیت راه‌اندازی را بررسی کنید
+        if node.start():
+            logger.info("Node started successfully")
+            
+            if not args.no_menu:
+                print("\n" + "="*50)
+                print("Blockchain Node CLI".center(50))
+                print("="*50 + "\n")
+                NodeMenu(node).show()
+            else:
+                logger.info("Running in headless mode")
+                input("Press Enter to stop...")
+        else:
             logger.error("Failed to start node. Exiting.")
             return
-            
-        if not args.no_menu:
-            print("\n" + "="*50)
-            print("Blockchain Node CLI".center(50))
-            print("="*50 + "\n")
-            NodeMenu(node).show()
-        else:
-            logger.info("Running in headless mode")
-            input("Press Enter to stop...")
             
     except KeyboardInterrupt:
         logger.info("\nShutting down node...")

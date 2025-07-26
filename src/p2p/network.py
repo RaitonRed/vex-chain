@@ -30,6 +30,10 @@ class P2PNetwork:
         threading.Thread(target=self.listen_for_peers, daemon=True).start()
         threading.Thread(target=self.peer_discovery.start, daemon=True).start()
     
+    def is_listening(self):
+        """Check if the node is listening for connections"""
+        return hasattr(self, 'socket') and self.socket is not None
+
     def set_blockchain(self, blockchain):
         """Set blockchain reference after initialization"""
         self.blockchain = blockchain
