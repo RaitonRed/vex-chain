@@ -8,9 +8,10 @@ class PeerDiscovery:
         self.network = network
         self.known_peers = set()
         self.bootstrap_nodes = [
-            ("mainnet.example.com", 6000),
-            ("backup.example.com", 6000)
+            ("localhost", 6000),
+            ("127.0.0.1", 6001)
         ]
+        self.min_peers = 1
     
     def start(self):
         """Start peer discovery process"""

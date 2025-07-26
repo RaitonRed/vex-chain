@@ -17,23 +17,22 @@ class Blockchain:
         self.chain = []
         self.p2p_network = None
 
-        try:
-            from src.utils.database import init_db
-            init_db()
-        
-            self.chain = self.load_chain()
-            if not self.chain:
-                self._initialize_new_chain()
-            else:
-                # اگر زنجیره نامعتبر بود، دیتابیس را ریست کنیم
-                if not Consensus.is_chain_valid(self.chain):
-                    logger.warning("Invalid chain detected, resetting database...")
-                    self._reset_blockchain()
-                    self._initialize_new_chain()
-                
-        except Exception as e:
-            logger.error(f"Chain initialization failed: {e}")
-            logger.info("Attempting to create new blockchain...")
+        if not hasattr(self, '_db_initialized'):
+            try:
+                from src.utils.database import init_db
+                init_db()
+                self._db_initialized = True
+            except Exception as e:
+                logger.error(f"Database initialization failed: {e}")
+                raise
+
+        self.chain = self.load_chain()
+        if not self.chain:
+            logger.info("No valid chain found, initializing new blockchain")
+            self._initialize_new_chain()
+        elif not Consensus.is_chain_valid(self.chain):
+            logger.warning("Invalid chain detected, resetting database...")
+            self._reset_blockchain()
             self._initialize_new_chain()
 
     def set_p2p_network(self, p2p_network):
