@@ -4,7 +4,7 @@ import threading
 from src.blockchain.chain import Blockchain
 from src.blockchain.mempool import Mempool
 from src.p2p.network import P2PNetwork
-from src.api.server import app as flask_app
+from src.api.api_server import app as flask_app
 from src.utils.service_monitor import ServiceMonitor
 from src.utils.logger import logger
 

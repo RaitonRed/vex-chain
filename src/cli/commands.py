@@ -1,9 +1,9 @@
-from src.blockchain.contract_transaction import ContractTransaction
+from src.blockchain.contracts.contract_transaction import ContractTransaction
 from src.blockchain.transaction import Transaction
-from src.blockchain.stake_manager import StakeManager
-from src.blockchain.validator_registry import ValidatorRegistry
-from src.blockchain.contract.contract_manager import ContractManager
-from src.blockchain.consensus import Consensus
+from src.blockchain.consensus.stake_manager import StakeManager
+from src.blockchain.consensus.validator_registry import ValidatorRegistry
+from src.blockchain.contracts.contract_manager import ContractManager
+from src.blockchain.consensus.consensus import Consensus
 from src.blockchain.transaction import Transaction
 from src.cli.prompts import (
     prompt_address,

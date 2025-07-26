@@ -2,11 +2,11 @@ import time
 from typing import List, Optional
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
-from src.blockchain.consensus import Consensus
-from src.blockchain.repositories import BlockRepository, TransactionRepository
-from src.blockchain.validator_registry import ValidatorRegistry
-from src.blockchain.contract.vm import SmartContractVM
-from src.blockchain.state_db import StateDB
+from src.blockchain.consensus.consensus import Consensus
+from src.blockchain.db.repositories import BlockRepository, TransactionRepository
+from src.blockchain.consensus.validator_registry import ValidatorRegistry
+from src.blockchain.contracts.vm import SmartContractVM
+from src.blockchain.db.state_db import StateDB
 from src.utils.logger import logger
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization

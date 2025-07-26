@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
-from src.blockchain.repositories import BlockRepository, TransactionRepository
+from src.blockchain.db.repositories import BlockRepository, TransactionRepository
 from src.blockchain.mempool import Mempool
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec

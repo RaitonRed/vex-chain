@@ -1,5 +1,5 @@
-from src.blockchain.contract_repository import ContractRepository
-from src.blockchain.contract.vm import SmartContractVM
+from src.blockchain.contracts.contract_repository import ContractRepository
+from src.blockchain.contracts.vm import SmartContractVM
 from typing import Optional, Dict
 from src.utils.logger import logger
 

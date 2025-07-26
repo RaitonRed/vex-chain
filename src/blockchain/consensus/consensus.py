@@ -2,7 +2,7 @@
 import random
 from typing import List, Dict
 from src.utils.logger import logger
-from src.blockchain.validator_registry import ValidatorRegistry
+from src.blockchain.consensus.validator_registry import ValidatorRegistry
 
 class Consensus:
     """پیاده‌سازی الگوریتم اجماع Proof of Stake"""

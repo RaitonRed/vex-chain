@@ -1,5 +1,5 @@
 import time
-from src.api.server import app as flask_app
+from src.api.api_server import app as flask_app
 
 class ServiceMonitor:
     def __init__(self):
