@@ -1,4 +1,4 @@
-# Blockchain Node - Proof of Stake Implementation
+# StorageNet - Proof of Stake Implementation
 
 A Python-based blockchain implementation with Proof of Stake consensus, smart contracts, P2P networking, and a comprehensive CLI interface.
 
