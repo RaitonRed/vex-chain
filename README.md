@@ -42,8 +42,8 @@ A Python-based blockchain implementation with Proof of Stake consensus, smart co
 ### Installation
 
 ```bash
-git clone https://github.com/RaitonRed/StorageNet.git
-cd StorageNet
+git clone https://github.com/RaitonRed/vex-chain.git
+cd vex-chain
 pip install -r requirements.txt
 ```
 
