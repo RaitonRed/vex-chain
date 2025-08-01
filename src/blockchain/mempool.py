@@ -1,4 +1,6 @@
 from typing import List, Dict
+from src.blockchain.contracts.contract_repository import ContractRepository
+from src.blockchain.db.state_db import StateDB
 from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
 from src.utils.database import db_connection
@@ -48,6 +50,9 @@ class Mempool:
             if tx.tx_hash not in self.transactions:
                 if hasattr(self, 'p2p_network'):
                     self.p2p_network.broadcast_transaction(tx)
+
+            if not self._validate_transaction(tx):
+                return False
             
             # ذخیره در حافظه
             self.transactions[tx.tx_hash] = tx
@@ -120,3 +125,32 @@ class Mempool:
             conn.commit()
         
         logger.info(f"Cleared {len(expired)} expired transactions")
+
+
+    def _validate_transaction(self, tx):
+        # 1. بررسی امضا
+        if not tx.is_valid():
+            logger.error(f"Invalid signature for tx: {tx.tx_hash[:8]}")
+            return False
+            
+        # 2. بررسی موجودی
+        state_db = StateDB()
+        sender_balance = state_db.get_balance(tx.sender)
+        required_amount = tx.amount + getattr(tx, 'fee', 0)
+        
+        if sender_balance < required_amount:
+            logger.error(f"Insufficient balance for {tx.sender}")
+            return False
+            
+        # 3. بررسی تکراری نبودن
+        if tx.tx_hash in self.transactions:
+            logger.warning(f"Duplicate transaction: {tx.tx_hash[:8]}")
+            return False
+            
+        # 4. اعتبارسنجی قرارداد (اگر وجود دارد)
+        if hasattr(tx, 'contract_address') and tx.contract_address:
+            if not ContractRepository.contract_exists(tx.contract_address):
+                logger.error(f"Invalid contract: {tx.contract_address[:8]}")
+                return False
+                
+        return True
