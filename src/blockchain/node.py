@@ -7,6 +7,8 @@ from src.p2p.network import P2PNetwork
 from src.api.api_server import app as flask_app
 from src.utils.service_monitor import ServiceMonitor
 from src.utils.logger import logger
+from src.wallet.wallet import Wallet
+from utils.database import init_db
 
 class BlockchainNode:
     def __init__(self, host='0.0.0.0', p2p_port=6000, api_port=5000):
@@ -17,6 +19,8 @@ class BlockchainNode:
         self.blockchain = None
         self.mempool = None
         self.p2p_network = None
+
+        self.wallet = Wallet(self)
         
         self.monitor = None
         self._services_ready = threading.Event()
@@ -39,13 +43,16 @@ class BlockchainNode:
             if self.p2p_port < 1024 and os.geteuid() != 0:
                 raise PermissionError(f"Port {self.p2p_port} requires root privileges")
             
-            print("🟢 Initializing blockchain...")
+            logger.info("initializing database...")
+            init_db()
+
+            logger.info("Initializing blockchain...")
             self.blockchain = Blockchain()
             
-            print("🟢 Initializing mempool...")
+            logger.info("Initializing mempool...")
             self.mempool = Mempool()
             
-            print("🟢 Starting P2P network...")
+            logger.info("🟢 Starting P2P network...")
             self.p2p_network = P2PNetwork(
                 host=self.host,
                 port=self.p2p_port,
