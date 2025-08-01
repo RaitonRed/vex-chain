@@ -61,22 +61,15 @@ class Mempool:
             with db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                INSERT OR IGNORE INTO mempool (
-                    tx_hash, sender, recipient, 
-                    amount, data, timestamp, signature
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO mempool (
+                        tx_hash, sender, recipient, amount, data, timestamp, signature
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    tx.tx_hash,
-                    tx.sender,
-                    tx.recipient,
-                    tx.amount,
-                    json.dumps(tx.data),
-                    tx.timestamp,
-                    tx.signature
+                    tx.tx_hash, tx.sender, tx.recipient, tx.amount, json.dumps(tx.data), tx.timestamp, tx.signature
                 ))
                 conn.commit()
-            
-            logger.info(f"Transaction added to mempool: {tx.tx_hash[:8]}")
+                logger.info(f"Transaction {tx.tx_hash[:8]} added to mempool database")
+                
             return True
         except Exception as e:
             logger.error(f"Failed to add transaction: {e}")
