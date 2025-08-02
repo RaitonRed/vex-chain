@@ -323,6 +323,20 @@ class SmartContractVM:
             'timestamp': context['timestamp']
         })
 
+    def _op_jump(self, context, params):
+        if len(params) < 1:
+            raise RuntimeError("JUMP requires line number")
+        line_num = int(params[0])
+        context['pc'] = line_num  # تنظیم شمارنده برنامه
+
+    def _op_jumpi(self, context, params):
+        if len(params) < 2:
+            raise RuntimeError("JUMPI requires line number and condition")
+        condition = self._get_value(context, params[1])
+        if condition:
+            line_num = int(params[0])
+            context['pc'] = line_num
+
     # توابع کمکی
     def _get_value(self, context, value_str):
         """ارزش را از ذخیره‌سازی یا به صورت مستقیم برمی‌گرداند"""
