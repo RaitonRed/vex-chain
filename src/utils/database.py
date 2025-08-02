@@ -4,6 +4,7 @@ import contextlib
 from src.utils.logger import logger
 
 DB_FILE = "data/blockchain.db"
+MIGRATION_DIR = "data/migrations"
 
 @contextlib.contextmanager
 def db_connection():
@@ -25,7 +26,32 @@ def init_db():
     
     with db_connection() as conn:
         cursor = conn.cursor()
-        
+
+        # Create migrations table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS migrations (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE,
+                applied_at TIMESTAMP DEFUALT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Get applied migrations
+        cursor.execute("SELECT name FROM migrations")
+        applied = {row[0] for row in cursor.fetchall()}
+
+        # Applt new migrations
+        migration_files = sorted(os.listdir(MIGRATION_DIR))
+        for filename in migration_files:
+            if filename not in applied and filename.endswith('.sql'):
+                with open(os.path.join(MIGRATION_DIR, filename)) as f:
+                    sql_script = f.read()
+                cursor.executescript(sql_script)
+                cursor.execute("INSERT INTO migrations (name) VALUES (?)", (filename,))
+                logger.info(f"Applied migration: {filename}")
+
+        conn.commit()
+
         # Reset tables to apply schema changes
         cursor.executescript('''
         PRAGMA foreign_keys = OFF;
@@ -139,6 +165,24 @@ def init_db():
             gas_limit INTEGER NOT NULL,
             refunded INTEGER DEFAULT 0,
             FOREIGN KEY (tx_hash) REFERENCES transactions(tx_hash)
+        );
+                             
+         -- جدول حساب‌ها
+        CREATE TABLE IF NOT EXISTS accounts (
+            address TEXT PRIMARY KEY,
+            public_key_pem TEXT NOT NULL
+        );
+        
+         -- جدول وضعیت موجودی‌ها
+        CREATE TABLE IF NOT EXISTS balances (
+            address TEXT PRIMARY KEY,
+            balance REAL NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS pending_blocks (
+            id INTEGER PRIMARY KEY,
+            block_data TEXT NOT NULL,
+            created_at REAL DEFAULT (strftime('%s', 'now'))
         );
 
         
