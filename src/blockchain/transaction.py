@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 from src.utils.crypto import sign_data, verify_signature
+from src.utils.database import db_connection
 
 @dataclass
 class Transaction:
@@ -70,17 +71,34 @@ class Transaction:
         })
 
     def sign(self, private_key) -> None:
-        """Sign the transaction"""
-        self.signature = sign_data(private_key, self.tx_hash)
+        """Improved signing method"""
+        from cryptography.hazmat.primitives import serialization
         
+        if isinstance(private_key, str):
+            private_key = serialization.load_pem_private_key(
+                private_key.encode('utf-8'),
+                password=None
+            )
+        
+        self.signature = sign_data(private_key, self.tx_hash)
+
     def is_valid(self) -> bool:
-        """Verify transaction validity"""
-        if not self.tx_hash or self.tx_hash != self.calculate_hash():
+        """Enhanced validation"""
+        if not all([self.sender, self.recipient, self.tx_hash]):
             return False
+            
         if self.amount < 0:
             return False
-        return verify_signature(
-            self.sender,
-            self.signature,
-            self.tx_hash
-        )
+            
+        if self.tx_hash != self.calculate_hash():
+            return False
+            
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT public_key_pem FROM accounts WHERE address = ?', (self.sender,))
+            row = cursor.fetchone()
+            
+        if not row:
+            return False
+            
+        return verify_signature(row[0], self.signature, self.tx_hash)
