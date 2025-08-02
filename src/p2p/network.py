@@ -6,6 +6,8 @@ from src.p2p.message_handler import MessageHandler
 from src.p2p.peer_discovery import PeerDiscovery
 from src.blockchain.chain import Blockchain
 from src.utils.logger import logger
+from src.utils.crypto import sign_data, verify_signature
+
 
 
 class P2PNetwork:
@@ -74,6 +76,11 @@ class P2PNetwork:
                     data = conn.recv(length)
                     if not data:
                         break
+
+                    # verify message signature
+                    if not self.verify_message(message):
+                        logger.warning(f"Invalid message from {addr}")
+                        return
                     
                     # Process message
                     message = json.loads(data.decode())
@@ -123,6 +130,12 @@ class P2PNetwork:
         """Send a message to a specific peer"""
         host, port = peer
         try:
+
+            # sign message
+            signature = self.sign_message(message)
+            message['signature'] = signature
+            message['public_key'] = self.public_key_pem
+
             data = json.dumps(message).encode()
             length = f"{len(data):<10}".encode()
             
@@ -133,6 +146,16 @@ class P2PNetwork:
         except Exception as e:
             logger.error(f"Error sending message to {peer}: {e}")
             self.peers.discard(peer)
+
+    def sign_message(self, message):
+        data = json.dumps(message, sort_keys=True).encode()
+        return sign_data(data, self.blockchain.wallet.private_key)
+    
+    def verify_message(self, message):
+        signature = message.pop('signature')
+        public_key_pem = message.pop('public_key')
+        data = json.dumps(message, sort_keys=True).encode()
+        return verify_signature(data, signature, public_key_pem)
     
     def broadcast_block(self, block):
         """Broadcast a new block to the network"""
