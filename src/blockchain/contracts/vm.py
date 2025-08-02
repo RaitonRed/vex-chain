@@ -46,6 +46,7 @@ class SmartContractVM:
         self.output = None
         self.error = None
         self.logs = []
+        self.gas_remaining = tx.gas_limit
         
         try:
             context = {
@@ -67,6 +68,9 @@ class SmartContractVM:
             # اجرای دستورات
             instructions = context['code'].split(';') if context['code'] else []
             for instruction in instructions:
+                if self.gas_remaining <= 0:
+                    raise RuntimeError("Out of gas")
+                
                 parts = instruction.strip().split()
                 if not parts:
                     continue
@@ -76,9 +80,9 @@ class SmartContractVM:
                 
                 # بررسی هزینه گاز
                 gas_cost = self.GAS_COSTS.get(opcode, 10)
-                if self.gas_used + gas_cost > tx.gas_limit:
-                    raise RuntimeError(f"Out of gas (used: {self.gas_used}, limit: {tx.gas_limit})")
-                
+                if gas_cost > self.gas_remaining:
+                    raise RuntimeError(f"Out of gas (needed: {gas_cost}, has {self.gas_remaining})")
+
                 # اجرای دستور
                 if opcode == 'ADD':
                     self._op_add(context, params)
@@ -129,7 +133,7 @@ class SmartContractVM:
                 else:
                     raise RuntimeError(f"Unknown opcode: {opcode}")
                 
-                self.gas_used += gas_cost
+                self.gas_remaining -= gas_cost
             
             # ذخیره وضعیت برای قراردادهای جدید
             if tx.contract_type == "CREATE":

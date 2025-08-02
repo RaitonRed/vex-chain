@@ -21,6 +21,10 @@ class Transaction:
     tx_hash: Optional[str] = field(default=None)
     contract_type: str = field(default="NORMAL")
 
+    # Add Gas fields
+    gas_limit: int = 1000000
+    gas_price: float = 0.0001
+
     def __post_init__(self):
         if self.tx_hash is None:
             self.tx_hash = self.calculate_hash()
