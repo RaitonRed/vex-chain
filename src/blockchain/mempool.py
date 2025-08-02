@@ -1,3 +1,4 @@
+import heapq
 from typing import List, Dict
 from src.blockchain.contracts.contract_repository import ContractRepository
 from src.blockchain.db.state_db import StateDB
@@ -9,11 +10,16 @@ import json
 import time
 import sqlite3
 
+EXPIRY_SECONDS = 3600  # 1 hour
+
 class Mempool:
     def __init__(self):
-        self.transactions: Dict[str, Transaction] = {}
+        self.transactions = {}
+        self.priority_queue = []
+        self.expiration_queue = []
         self.max_size = 1000
         self.p2p_network = P2PNetwork
+
         # بارگذاری فقط در صورتی که جدول mempool وجود دارد
         try:
             self._load_from_db()
@@ -33,6 +39,10 @@ class Mempool:
 
     def add_transaction(self, tx: Transaction) -> bool:
         """اضافه کردن تراکنش جدید به mempool"""
+
+        heapq.heappush(self.priority_queue, (-tx.fee, tx.timestamp, tx))
+        heapq.heappush(self.expiration_queue, (tx.timestamp + EXPIRY_SECONDS, tx.tx_hash))
+
         try:
             # اعتبارسنجی اولیه تراکنش
             if not tx.tx_hash or tx.tx_hash != tx.calculate_hash():
