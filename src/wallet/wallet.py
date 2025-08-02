@@ -5,6 +5,7 @@ import binascii
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
+from cryptography.fernet import Fernet
 from src.utils.database import db_connection
 from src.utils.logger import logger
 
@@ -14,6 +15,24 @@ class Wallet:
         self.accounts = {}
         self.load_accounts()
         self.check_permissions()
+        self.encryption_key = self._get_encryption_key()
+
+    def _get_encryption_key(self, node):
+        key_path = "data/wallet_key.key"
+        if not os.path.exists(key_path):
+            key = Fernet.generate_key()
+            with open(key_path, "wb") as key_file:
+                key_file.write(key)
+            os.chmod(key_path, 0o600)
+        return open(key_path, "wb").read()
+    
+    def _encrypt_data(self, data):
+        fernet = Fernet(self.encryption_key)
+        return fernet.encrypt(data.encode()).decode()
+    
+    def _decrypt_data(self, encrypted_data):
+        fernet = Fernet(self.encryption_key)
+        return fernet.decrypt(encrypted_data.encode()).decode()
 
     def create_account(self, account_name):
         """Create new cryptographic account"""
@@ -88,7 +107,7 @@ class Wallet:
                 if 'private_key' in acc:
                     wallet_data[name] = {
                         'address': acc['address'],
-                        'private_key': acc['private_key'],
+                        'private_key': self._encrypt_data(acc['private_key']),
                         'public_key': acc.get('public_key', '')
                     }
 
@@ -134,10 +153,16 @@ class Wallet:
             # Merge private keys
             for name, data in wallet_data.items():
                 if isinstance(data, dict) and 'address' in data:
-                    if data['address'] in self.accounts:
+                    if 'private_key' in data:
+                        try:
+                            decrypted_pk = self._decrypt_data(data['private_key'])
+                        except Exception as e:
+                            logger.error(f"Decryption failed: {e}")
+
+                    if data['address'] in self.account:
                         self.accounts[data['address']].update({
                             'name': name,
-                            'private_key': data.get('private_key')
+                            'private_key': decrypted_pk
                         })
                         logger.debug(f"Merged private key for {data['address']}")
                     else:
