@@ -1,10 +1,15 @@
 import json
 import time
+from trie import HexaryTrie
 from src.utils.database import db_connection
 
 class StateDB:
     """پیاده‌سازی StateDB برای قراردادهای هوشمند"""
     
+    def __init__(self):
+        self.trie = HexaryTrie(db={})
+        self.cache = {}
+
     def load_contract_code(self, contract_address):
         """بارگذاری کد قرارداد از دیتابیس"""
         with db_connection() as conn:
@@ -44,14 +49,28 @@ class StateDB:
 
     def get_balance(self, address):
         """Get account balance"""
+
+        # Check cache first
+        if address in self.cache:
+            return self.cache[address]
+
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT balance FROM balances WHERE address = ?', (address,))
             row = cursor.fetchone()
             return row[0] if row else 0
 
+        value = self.trie.get(address.encode())
+        return float(value.decode()) if value else 0.0
+
     def update_balance(self, address, new_balance):
         """Update account balance"""
+
+        # Update trie
+        key = address.encode()
+        value = str(new_balance).encode()
+        self.trie.set(key, value)
+
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
