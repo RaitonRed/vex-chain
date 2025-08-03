@@ -7,30 +7,36 @@ from cryptography.hazmat.primitives.serialization import (
     Encoding,
     PublicFormat,
     PrivateFormat,
-    NoEncryption
+    NoEncryption,
+    load_pem_public_key,
+    load_pem_private_key
 )
+from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidSignature
+from src.utils.logger import logger
 
 def generate_key_pair():
     """Generate ECDSA key pair using secp256k1 curve"""
-    private_key = ec.generate_private_key(ec.SECP256K1())
+    private_key = ec.generate_private_key(ec.SECP256K1(), default_backend())
     public_key = private_key.public_key()
     return private_key, public_key
 
 def sign_data(private_key, data: str) -> str:
     """Sign data with private key"""
     if isinstance(data, str):
-        data = data.encode()
+        data = data.encode('utf-8')
     signature = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
-    return binascii.hexlify(signature).decode()
+    return binascii.hexlify(signature).decode('utf-8')
 
 def verify_signature(public_key_pem: str, signature: str, data: str) -> bool:
     """Verify signature with public key"""
-    from cryptography.hazmat.primitives.serialization import load_pem_public_key
     try:
-        public_key = load_pem_public_key(public_key_pem.encode())
+        public_key = load_pem_public_key(
+            public_key_pem.encode('utf-8'),
+            backend=default_backend()
+        )
         if isinstance(data, str):
-            data = data.encode()
+            data = data.encode('utf-8')
         sig_bytes = binascii.unhexlify(signature)
         public_key.verify(
             sig_bytes,
@@ -38,7 +44,8 @@ def verify_signature(public_key_pem: str, signature: str, data: str) -> bool:
             ec.ECDSA(hashes.SHA256())
         )
         return True
-    except (InvalidSignature, ValueError, binascii.Error):
+    except (InvalidSignature, ValueError, binascii.Error) as e:
+        logger.error(f"Signature verification failed: {e}")
         return False
 
 def private_key_to_pem(private_key) -> str:
