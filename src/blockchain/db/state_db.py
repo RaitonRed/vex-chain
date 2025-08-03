@@ -43,13 +43,24 @@ class StateDB:
             conn.commit()
 
     def get_balance(self, address):
-        """دریافت موجودی حساب (پیاده‌سازی نمونه)"""
-        return 1000000  # مقدار ثابت برای نمونه
+        """Get account balance"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT balance FROM balances WHERE address = ?', (address,))
+            row = cursor.fetchone()
+            return row[0] if row else 0
 
     def update_balance(self, address, new_balance):
-        """به‌روزرسانی موجودی حساب (پیاده‌سازی نمونه)"""
-        pass
+        """Update account balance"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO balances (address, balance)
+                VALUES (?, ?)
+            ''', (address, new_balance))
+            conn.commit()
 
     def add_balance(self, address, amount):
-        """افزایش موجودی حساب (پیاده‌سازی نمونه)"""
-        pass
+        """Add to account balance"""
+        current = self.get_balance(address)
+        self.update_balance(address, current + amount)
