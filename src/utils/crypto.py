@@ -9,11 +9,27 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     NoEncryption,
     load_pem_public_key,
-    load_pem_private_key
 )
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidSignature
 from src.utils.logger import logger
+
+def generate_ecc_key_pair():
+    """Generate ECDSA key pair using secp256k1 curve"""
+    private_key = ec.generate_private_key(ec.SECP256K1())
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+def sign_message(private_key, message: str) -> str:
+    """Sign a message with private key"""
+    if isinstance(message, str):
+        message = message.encode('utf-8')
+    signature = private_key.sign(
+        message,
+        ec.ECDSA(hashes.SHA256())
+    )
+    return binascii.hexlify(signature).decode('utf-8')
 
 def generate_key_pair():
     """Generate ECDSA key pair using secp256k1 curve"""
@@ -28,23 +44,23 @@ def sign_data(private_key, data: str) -> str:
     signature = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
     return binascii.hexlify(signature).decode('utf-8')
 
-def verify_signature(public_key_pem: str, signature: str, data: str) -> bool:
+def verify_signature(public_key_pem: str, signature: str, message: str) -> bool:
     """Verify signature with public key"""
     try:
         public_key = load_pem_public_key(
             public_key_pem.encode('utf-8'),
             backend=default_backend()
         )
-        if isinstance(data, str):
-            data = data.encode('utf-8')
+        if isinstance(message, str):
+            message = message.encode('utf-8')
         sig_bytes = binascii.unhexlify(signature)
         public_key.verify(
             sig_bytes,
-            data,
+            message,
             ec.ECDSA(hashes.SHA256())
         )
         return True
-    except (InvalidSignature, ValueError, binascii.Error) as e:
+    except Exception as e:
         logger.error(f"Signature verification failed: {e}")
         return False
 
