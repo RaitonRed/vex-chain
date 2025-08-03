@@ -52,19 +52,19 @@ def init_db():
 
         conn.commit()
 
-        # Reset tables to apply schema changes
-        cursor.executescript('''
-        PRAGMA foreign_keys = OFF;
-        
-        DROP TABLE IF EXISTS transactions;
-        DROP TABLE IF EXISTS blocks;
-        DROP TABLE IF EXISTS chain_state;
-        DROP TABLE IF EXISTS validators;
-        DROP TABLE IF EXISTS stakes;
-        DROP TABLE IF EXISTS mempool;
-        
-        PRAGMA foreign_keys = ON;
-        ''')
+    #    # Reset tables to apply schema changes
+    #    cursor.executescript('''
+    #    PRAGMA foreign_keys = OFF;
+    #    
+    #    DROP TABLE IF EXISTS transactions;
+    #    DROP TABLE IF EXISTS blocks;
+    #    DROP TABLE IF EXISTS chain_state;
+    #    DROP TABLE IF EXISTS validators;
+    #    DROP TABLE IF EXISTS stakes;
+    #    DROP TABLE IF EXISTS mempool;
+    #    
+    #    PRAGMA foreign_keys = ON;
+    #    ''')
 
         # ایجاد جداول و ایندکس‌ها
         cursor.executescript('''
