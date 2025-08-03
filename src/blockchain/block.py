@@ -147,6 +147,13 @@ class Block:
         block.transactions_hash = block.calculate_transactions_hash()
         
         return block
+    
+    def to_compact(self):
+        return {
+            'index': self.index,
+            'hash': self.hash,
+            'tx_hash': [tx.tx_hash for tx in self.transactions]
+        }
 
     def __repr__(self) -> str:
         return (f"<Block index={self.index}, hash={self.hash[:10]}..., "

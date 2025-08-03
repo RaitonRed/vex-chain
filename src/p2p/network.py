@@ -159,10 +159,16 @@ class P2PNetwork:
     
     def broadcast_block(self, block):
         """Broadcast a new block to the network"""
-        self.broadcast_message({
-            "type": "new_block",
-            "data": block.to_dict()
-        })
+        if len(block.transactions) > 10:
+            self.broadcast_transaction({
+                "type": "compact_block",
+                "data": block.to_compact()
+            })
+        else:
+            self.broadcast_message({
+                "type": "new_block",
+                "data": block.to_dict()
+            })
     
     def broadcast_transaction(self, transaction):
         """Broadcast a new transaction to the network"""
