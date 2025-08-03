@@ -170,7 +170,8 @@ def init_db():
          -- جدول حساب‌ها
         CREATE TABLE IF NOT EXISTS accounts (
             address TEXT PRIMARY KEY,
-            public_key_pem TEXT NOT NULL
+            public_key_pem TEXT NOT NULL,
+            nonce INTEGER DEFAULT 0,
         );
         
          -- جدول وضعیت موجودی‌ها
@@ -185,6 +186,19 @@ def init_db():
             created_at REAL DEFAULT (strftime('%s', 'now'))
         );
 
+                             
+        -- Add nonce column if it doesn't exist
+        PRAGMA table_info(accounts);
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'nonce'
+        ) THEN 1 ELSE 0 END AS has_nonce;
+        
+        -- If no nonce column, add it
+        BEGIN;
+        INSERT INTO chain_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;
+        UPDATE chain_state SET schema_version = 2 WHERE id = 1;
+        COMMIT;
+        
         
         -- ایندکس‌های جدول بلاک‌ها
         CREATE INDEX IF NOT EXISTS idx_blocks_index ON blocks ("index");

@@ -158,6 +158,11 @@ class Blockchain:
             
         # اعتبارسنجی تراکنش‌ها
         for tx in block.transactions:
+                sender_nonce = StateDB().get_nonce(tx.sender)
+                if tx.nonce != sender_nonce + 1:
+                    logger.error(f"Invalid nonce for tx {tx.tx_hash}")
+                    return None
+                
                 if not tx.is_valid():
                     logger.error(f"Invalid transaction in external block: {tx.tx_hash}")
                     return None
@@ -168,10 +173,16 @@ class Blockchain:
                     if sender_balance < tx.amount:
                         logger.error(f"Insufficient balance for {tx.sender}")
                         return None
+
         
         # اجرای قراردادهای هوشمند در بلاک دریافتی
         vm = SmartContractVM(StateDB())
         for tx in block.transactions:
+            sender_nonce = StateDB().get_nonce(tx.sender)
+            if tx.nonce != sender_nonce + 1:
+                logger.error(f"Invalid nonce for tx {tx.tx_hash}")
+                return None
+            
             if tx.contract_type != "NORMAL":
                 logger.info(f"Executing smart contract tx from external block: {tx.tx_hash[:8]}")
                 

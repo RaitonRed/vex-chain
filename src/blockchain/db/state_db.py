@@ -9,6 +9,7 @@ class StateDB:
     def __init__(self):
         self.trie = HexaryTrie(db={})
         self.cache = {}
+        self.nonce_prefix = b"nonce_"
 
     def load_contract_code(self, contract_address):
         """بارگذاری کد قرارداد از دیتابیس"""
@@ -83,3 +84,44 @@ class StateDB:
         """Add to account balance"""
         current = self.get_balance(address)
         self.update_balance(address, current + amount)
+
+    def get_nonce(self, address: str) -> int:
+        """Get the current nonce for an address
+
+        Args:
+            address (str): wallet address
+
+        Returns:
+            int: nonce
+        """
+        
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT none FROM accounts WHERE address = ?', 
+                (address,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def increment_nonce(self, address: str) -> int:
+        """Incerment and return the new nonce for an address"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get current nonce
+            cursor.execute(
+                'SELECT nonce FROM accounts WHERE address = ?', 
+                (address,)
+            )
+            row = cursor.fetchone()
+            current_nonce = row[0] if row else 0
+
+            # Update nonce
+            new_nonce = current_nonce + 1
+            cursor.execute('''
+                INSERT OR REPLACE INTO accounts (address, public_key_pem, nonce)
+                VALUES (?, ?, ?)
+            ''', (address, None, new_nonce))
+            cursor.commit()
+            return new_nonce

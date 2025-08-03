@@ -3,6 +3,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
+from src.blockchain.db.state_db import StateDB
 from src.utils.crypto import sign_data, verify_signature
 from src.utils.database import db_connection
 
@@ -25,9 +26,15 @@ class Transaction:
     gas_limit: int = 1000000
     gas_price: float = 0.0001
 
+    nonce: int = 0
+
     def __post_init__(self):
         if self.tx_hash is None:
             self.tx_hash = self.calculate_hash()
+
+        # If nonce isn't set and we have a sender, try to get from StateDB
+        if self.nonce == 0 and hasattr(self, 'sender') and self.sender:
+            self.nonce = StateDB().get_nonce(self.sender) + 1
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert transaction to dictionary"""
@@ -71,7 +78,10 @@ class Transaction:
             "amount": self.amount,
             "data": self.data,
             "timestamp": self.timestamp,
-            "contract_type": self.contract_type
+            "contract_type": self.contract_type,
+            "nonce": self.nonce,
+            "gas_limit": self.gas_limit,
+            "gas_price": self.gas_price
         })
 
     def sign(self, private_key) -> None:

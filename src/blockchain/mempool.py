@@ -120,6 +120,14 @@ class Mempool:
 
 
     def _validate_transaction(self, tx):
+        
+        last_nonce = StateDB().get_nonce(tx.sender)
+
+        # Check nonce
+        if tx.nonce <= last_nonce:
+            logger.error(f"Invalid nonce for {tx.sender}: {tx.nonce} <= {last_nonce}")
+            return False
+        
         # 1. بررسی امضا
         if not tx.is_valid():
             logger.error(f"Invalid signature for tx: {tx.tx_hash[:8]}")

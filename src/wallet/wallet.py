@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
+from src.blockchain.db.state_db import StateDB
+from src.blockchain.transaction import Transaction
 from src.utils.database import db_connection
 from src.utils.logger import logger
 
@@ -177,3 +179,18 @@ class Wallet:
             logger.error(f"Invalid JSON in wallet file: {e}")
         except Exception as e:
             logger.error(f"Error loading wallet: {e}")
+
+        def create_transaction(self, recipient, amount, data=None):
+            account = self.get_account()
+            nonce = StateDB().get_nonce(account['address']) + 1
+            
+            tx = Transaction(
+                sender=account['address'],
+                recipient=recipient,
+                amount=amount,
+                data=data or {},
+                nonce=nonce
+            )
+            
+            tx.sign(self.get_private_key())
+            return tx
