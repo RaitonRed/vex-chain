@@ -112,22 +112,11 @@ class Mempool:
     def clear_expired(self, expiry_seconds: int = 3600):
         """پاک‌سازی تراکنش‌های منقضی شده"""
         now = time.time()
-        expired = [
-            tx_hash for tx_hash, tx in self.transactions.items()
-            if now - tx.timestamp > expiry_seconds
-        ]
-        
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            for tx_hash in expired:
-                # حذف از حافظه
-                del self.transactions[tx_hash]
-                
-                # حذف از دیتابیس
-                cursor.execute('DELETE FROM mempool WHERE tx_hash = ?', (tx_hash,))
-            conn.commit()
-        
-        logger.info(f"Cleared {len(expired)} expired transactions")
+        while self.expiration and self.expiration_queue[0][0] < now:
+            _, tx = heapq.heappop(self.expiration_queue)
+            if tx.tx_hash in self.transactions:
+                del self.transactions[tx.tx_hash]
+                logger.info(f"Removed expired transaction: {tx.tx_hash[:8]}")
 
 
     def _validate_transaction(self, tx):
