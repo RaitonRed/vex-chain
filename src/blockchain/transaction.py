@@ -26,6 +26,8 @@ class Transaction:
     gas_limit: int = 1000000
     gas_price: float = 0.0001
 
+    fee: int = 0.01
+
     nonce: int = 0
 
     def __post_init__(self):
