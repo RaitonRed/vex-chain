@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from src.blockchain.db.state_db import StateDB
 from src.utils.crypto import sign_data, verify_signature
 from src.utils.database import db_connection
+from src.utils import logger
 
 @dataclass
 class Transaction:
@@ -36,7 +37,19 @@ class Transaction:
 
         if self.signature is None:
             self.sign()
-                
+
+        # Set nonce automatically if not provided
+        if self.nonce is None:
+            try:
+                # Special case for system accounts
+                if self.sender == "0x0000000000000000000000000000000000000000":
+                    self.nonce = 0
+                else:
+                    self.nonce = StateDB().get_nonce(self.sender) + 1
+            except Exception as e:
+                logger.error(f"Error getting nonce: {e}")
+                self.nonce = 0
+
         # Set nonce automatically if not provided
         if self.nonce is None:
             # Special case for genesis transaction

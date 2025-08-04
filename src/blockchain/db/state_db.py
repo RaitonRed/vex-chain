@@ -39,7 +39,7 @@ class StateDB:
             return None
     
     def update_account(self, address: str, public_key_pem: str = None, nonce: int = None):
-        """Update account information"""
+        """Update account information without overwriting public key"""
         account = self.get_account(address) or {}
         
         # Use existing values if not provided
@@ -143,18 +143,18 @@ class StateDB:
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'SELECT none FROM accounts WHERE address = ?', 
+                'SELECT nonce FROM accounts WHERE address = ?', 
                 (address,)
             )
             row = cursor.fetchone()
             return row[0] if row else 0
 
     def increment_nonce(self, address: str) -> int:
-        """Incerment and return the new nonce for an address"""
+        """Increment and return the new nonce for an address"""
         with db_connection() as conn:
             cursor = conn.cursor()
 
-            # Get current nonce
+            # FIX: Changed 'none' to 'nonce'
             cursor.execute(
                 'SELECT nonce FROM accounts WHERE address = ?', 
                 (address,)
@@ -168,5 +168,5 @@ class StateDB:
                 INSERT OR REPLACE INTO accounts (address, public_key_pem, nonce)
                 VALUES (?, ?, ?)
             ''', (address, None, new_nonce))
-            cursor.commit()
+            conn.commit()  # FIX: Changed cursor.commit() to conn.commit()
             return new_nonce

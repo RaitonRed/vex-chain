@@ -37,52 +37,33 @@ class Mempool:
                 
             cursor.execute('SELECT * FROM mempool')
 
-    def add_transaction(self, tx: Transaction) -> bool:
-        """اضافه کردن تراکنش جدید به mempool"""
-
-        heapq.heappush(self.priority_queue, (-tx.fee, tx.timestamp, tx))
-        heapq.heappush(self.expiration_queue, (tx.timestamp + EXPIRY_SECONDS, tx.tx_hash))
-
+    def add_transaction(self, transaction):
+        """Add a transaction to the mempool with better error handling"""
         try:
-            # اعتبارسنجی اولیه تراکنش
-            if not tx.tx_hash or tx.tx_hash != tx.calculate_hash():
-                logger.error("Invalid transaction hash")
+            # Validate transaction
+            if not transaction.is_valid():
+                logger.error("Invalid transaction")
                 return False
-            
-            if tx.tx_hash in self.transactions:
-                logger.warning(f"Transaction {tx.tx_hash[:8]} already in mempool")
-                return False
-            
-            if len(self.transactions) >= self.max_size:
-                logger.warning("Mempool is full, transaction rejected")
-                return False
-            
-            if tx.tx_hash not in self.transactions:
-                if hasattr(self, 'p2p_network'):
-                    self.p2p_network.broadcast_transaction(tx)
-
-            if not self._validate_transaction(tx):
-                return False
-            
-            # ذخیره در حافظه
-            self.transactions[tx.tx_hash] = tx
-            
-            # ذخیره در دیتابیس
-            with db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR IGNORE INTO mempool (
-                        tx_hash, sender, recipient, amount, data, timestamp, signature
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    tx.tx_hash, tx.sender, tx.recipient, tx.amount, json.dumps(tx.data), tx.timestamp, tx.signature
-                ))
-                conn.commit()
-                logger.info(f"Transaction {tx.tx_hash[:8]} added to mempool database")
                 
+            # Check if transaction already exists
+            if transaction.tx_hash in self.transactions:
+                logger.warning("Transaction already in mempool")
+                return False
+                
+            # Add to mempool
+            self.transactions[transaction.tx_hash] = transaction
+            logger.info(f"Transaction added to mempool: {transaction.tx_hash[:8]}...")
+            
+            # Broadcast to network
+            if self.p2p_network:
+                try:
+                    self.p2p_network.broadcast_transaction(transaction)
+                except Exception as e:
+                    logger.error(f"Failed to broadcast transaction: {e}")
+                    
             return True
         except Exception as e:
-            logger.error(f"Failed to add transaction: {e}")
+            logger.error(f"Error adding transaction to mempool: {e}")
             return False
 
     def get_transactions(self, max_count: int = 10) -> List[Transaction]:
