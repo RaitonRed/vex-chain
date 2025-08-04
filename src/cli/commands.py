@@ -5,6 +5,7 @@ from src.blockchain.consensus.validator_registry import ValidatorRegistry
 from src.blockchain.contracts.contract_manager import ContractManager
 from src.blockchain.consensus.consensus import Consensus
 from src.blockchain.transaction import Transaction
+from src.cli.style import CLITheme
 from src.cli.prompts import (
     prompt_address,
     prompt_amount,
@@ -31,6 +32,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 class CommandExecutor:
     def __init__(self, node):
         self.node = node
+
+        self.theme = CLITheme()
 
     def show_status(self):
         """Display node status information"""
@@ -66,7 +69,7 @@ class CommandExecutor:
             address = prompt_address("Your address")
             amount = prompt_amount("Amount to stake")
             
-            StakeManager.stake(address, amount, len(self.node.blockchain.chain))
+            StakeManager.stake(address, amount, ValidatorRegistry.get_public_key_pem(address))
             print_success(f"Successfully staked {amount} coins")
             
         except Exception as e:
@@ -92,35 +95,35 @@ class CommandExecutor:
         display_validators(validators)
 
     def mine_block(self):
-        """Handle manual block mining"""
+        """Manual block mining"""
         if not self.node.blockchain.chain:
-            print_error("Blockchain not initialized")
+            print_error("Blockchain is not initialized")
             return
 
         validators = ValidatorRegistry.get_active_validators()
         if not validators:
-            print_error("No active validators available")
+            print_error("No active validators found")
             return
 
         transactions = list(self.node.mempool.transactions.values())
         if not transactions:
-            print_warning("No transactions in mempool")
+            print_warning("No transactions in the mempool")
             return
 
         try:
-            # In production, use actual validator key
+            # Generate a temporary validator key for mining
             validator_key = ec.generate_private_key(ec.SECP256K1())
-            
             new_block = self.node.blockchain.add_block(transactions, validator_key)
             if new_block:
                 print_success(f"Block #{new_block.index} mined successfully!")
+                # Remove mined transactions from the mempool
                 self.node.mempool.remove_transactions([tx.tx_hash for tx in transactions])
+                # Distribute rewards to validators
                 StakeManager.distribute_rewards(new_block)
             else:
                 print_error("Block mining failed")
-                
         except Exception as e:
-            print_error(f"Mining failed: {str(e)}")
+            print_error(f"Mining error: {str(e)}")
 
     def deploy_contract(self):
         """Handle contract deployment"""
@@ -182,24 +185,55 @@ class CommandExecutor:
             print_error(f"Synchronization failed: {str(e)}")
 
     def create_transaction(self):
-        """Create new transaction"""
-        sender = prompt_address("Sender address")
-        recipient = prompt_address("Recipient address")
-        amount = prompt_amount("Amount")
-        data = prompt_json_data("Additional data (JSON)")
-        
-        tx = Transaction(
-            sender=sender,
-            recipient=recipient,
-            amount=amount,
-            data=data
-        ).sign(self.node.wallet.get_private_key())
-        
-        if self.node.mempool.add_transaction(tx):
-            print_success(f"Transaction added successfully! Hash: {tx.tx_hash[:10]}...")
-        else:
-            print_error("Failed to add transaction")
-
+        """Create and sign transaction properly"""
+        try:
+            # Account selection
+            accounts = list(self.node.wallet.accounts.items())
+            if not accounts:
+                print(f"{self.theme.ERROR}❌ No accounts available{self.theme.RESET}")
+                return
+                
+            print(f"{self.theme.INFO}Available accounts:{self.theme.RESET}")
+            for i, (name, acc) in enumerate(accounts, 1):
+                print(f"{i}. {name} ({acc['address'][:12]}...)")
+                
+            # Get account
+            choice = int(input(f"{self.theme.PROMPT}Select account: {self.theme.INPUT}")) - 1
+            account = accounts[choice][1]
+            
+            # Get transaction details
+            recipient = prompt_address("Recipient address")
+            amount = prompt_amount("Amount")
+            data = prompt_json_data("Additional data (JSON)")
+            
+            # Create transaction
+            tx = Transaction(
+                sender=account['address'],
+                recipient=recipient,
+                amount=amount,
+                data=data
+            )
+            
+            # Sign transaction
+            private_key_pem = account['private_key']
+            if private_key_pem:
+                from cryptography.hazmat.primitives.serialization import load_pem_private_key
+                private_key = load_pem_private_key(
+                    private_key_pem.encode('utf-8'),
+                    password=None
+                )
+                tx.sign(private_key)
+                
+                if self.node.mempool.add_transaction(tx):
+                    print(f"{self.theme.SUCCESS}✅ Transaction added! Hash: {tx.tx_hash[:10]}...{self.theme.RESET}")
+                else:
+                    print(f"{self.theme.ERROR}❌ Failed to add transaction{self.theme.RESET}")
+            else:
+                print(f"{self.theme.ERROR}❌ No private key available{self.theme.RESET}")
+                
+        except Exception as e:
+            print(f"{self.theme.ERROR}❌ Error: {str(e)}{self.theme.RESET}")
+            
     def create_contract_transaction(self):
         """Create smart contract transaction"""
         sender = prompt_address("Sender address")
@@ -354,6 +388,16 @@ class CommandExecutor:
             print_success(f"Cleared {count} transactions from mempool")
         except Exception as e:
             print_error(f"Failed to clear mempool: {str(e)}")
+
+    def create_account(self):
+        """Create new cryptographic account"""
+        account_name = input(f"{self.theme.PROMPT}Account name: {self.theme.INPUT}").strip()
+        if not account_name:
+            print_error("Account name cannot be empty")
+            return
+            
+        address = self.node.wallet.create_account(account_name)
+        print_success(f"Account created successfully! Address: {address}")
     
     def exit_node(self):
         """Handle node shutdown"""

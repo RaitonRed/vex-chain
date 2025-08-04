@@ -8,13 +8,7 @@ from src.cli.outputs import display_menu, print_error, print_success, print_info
 from src.cli.style import CLITheme
 from src.utils.logger import logging, logger
 from src.blockchain.node import BlockchainNode
-
-@dataclass
-class MenuItem:
-    label: str
-    handler: Callable
-    requires_ready_node: bool = True
-    admin_only: bool = False
+from src.cli.menu import MenuItem
 
 class NodeMenu:
     def __init__(self, node):
@@ -28,6 +22,9 @@ class NodeMenu:
             "3": MenuItem("📝 Mempool Transactions", self.executor.show_mempool_info),
             "4": MenuItem("🌐 Network Peers", self.executor.show_peers),
             "5": MenuItem("🛡️ Validator Status", self.executor.show_validators),
+
+            # wallet
+            "6": MenuItem("Create Account", self.executor.create_account),
             
             # Transactions Section
             "10": MenuItem("💸 Send Transaction", self.executor.create_transaction),

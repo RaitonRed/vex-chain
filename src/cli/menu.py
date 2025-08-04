@@ -9,6 +9,7 @@ class MenuItem:
     label: str
     handler: Callable
     requires_ready_node: bool = True
+    admin_only: bool = False
 
 class NodeMenu:
     def __init__(self, node):
@@ -28,7 +29,9 @@ class NodeMenu:
             "10": MenuItem("Call Contract", self.executor.call_contract),
             "11": MenuItem("View Contract", self.executor.view_contract),
             "12": MenuItem("Sync Network", self.executor.sync_network),
-            "13": MenuItem("Exit", self.executor.exit_node)
+            "13": MenuItem("Create Account", self.executor.create_account),
+            "14": MenuItem("Send Transaction", self.executor.create_transaction),
+            "15": MenuItem("Exit", self.executor.exit_node),
         }
 
     def show(self):
