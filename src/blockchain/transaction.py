@@ -32,9 +32,20 @@ class Transaction:
         if self.tx_hash is None:
             self.tx_hash = self.calculate_hash()
 
-        # If nonce isn't set and we have a sender, try to get from StateDB
-        if self.nonce == 0 and hasattr(self, 'sender') and self.sender:
-            self.nonce = StateDB().get_nonce(self.sender) + 1
+        if self.signature is None:
+            self.sign()
+                
+        # Set nonce automatically if not provided
+        if self.nonce is None:
+            # Special case for genesis transaction
+            if self.sender == "0":
+                self.nonce = 0
+            else:
+                try:
+                    self.nonce = StateDB().get_nonce(self.sender) + 1
+                except:
+                    # If account doesn't exist, start at 0
+                    self.nonce = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert transaction to dictionary"""

@@ -52,20 +52,6 @@ def init_db():
 
         conn.commit()
 
-    #    # Reset tables to apply schema changes
-    #    cursor.executescript('''
-    #    PRAGMA foreign_keys = OFF;
-    #    
-    #    DROP TABLE IF EXISTS transactions;
-    #    DROP TABLE IF EXISTS blocks;
-    #    DROP TABLE IF EXISTS chain_state;
-    #    DROP TABLE IF EXISTS validators;
-    #    DROP TABLE IF EXISTS stakes;
-    #    DROP TABLE IF EXISTS mempool;
-    #    
-    #    PRAGMA foreign_keys = ON;
-    #    ''')
-
         # ایجاد جداول و ایندکس‌ها
         cursor.executescript('''
         -- جدول بلاک‌ها
@@ -171,7 +157,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS accounts (
             address TEXT PRIMARY KEY,
             public_key_pem TEXT NOT NULL,
-            nonce INTEGER DEFAULT 0,
+            nonce INTEGER DEFAULT 0
         );
         
          -- جدول وضعیت موجودی‌ها
@@ -184,21 +170,7 @@ def init_db():
             id INTEGER PRIMARY KEY,
             block_data TEXT NOT NULL,
             created_at REAL DEFAULT (strftime('%s', 'now'))
-        );
-
-                             
-        -- Add nonce column if it doesn't exist
-        PRAGMA table_info(accounts);
-        SELECT CASE WHEN EXISTS (
-            SELECT 1 FROM pragma_table_info('accounts') WHERE name = 'nonce'
-        ) THEN 1 ELSE 0 END AS has_nonce;
-        
-        -- If no nonce column, add it
-        BEGIN;
-        INSERT INTO chain_state (id) VALUES (1) ON CONFLICT(id) DO NOTHING;
-        UPDATE chain_state SET schema_version = 2 WHERE id = 1;
-        COMMIT;
-        
+        );   
         
         -- ایندکس‌های جدول بلاک‌ها
         CREATE INDEX IF NOT EXISTS idx_blocks_index ON blocks ("index");
@@ -240,7 +212,8 @@ def init_db():
             total_transactions INTEGER DEFAULT 0,
             last_block_hash TEXT,
             last_block_timestamp REAL,
-            last_updated REAL DEFAULT (strftime('%s', 'now'))
+            last_updated REAL DEFAULT (strftime('%s', 'now')),
+            schema_version INTEGER DEFAULT 1  -- ADDED THIS LINE
         )
         ''') 
         

@@ -20,6 +20,7 @@ from src.blockchain.consensus.validator_registry import ValidatorRegistry
 from src.blockchain.consensus.stake_manager import StakeManager
 from src.utils.database import db_connection
 from src.utils.crypto import generate_ecc_key_pair, sign_message, verify_signature
+from src.blockchain.models.accounts import Account
 
 from src.utils.database import db_connection
 
@@ -56,6 +57,7 @@ class Blockchain:
         """مقداردهی اولیه یک زنجیره جدید بدون ریست دیتابیس"""
         logger.info("Initializing new blockchain")
         try:
+            self._initialize_special_accounts()
             # ایجاد بلاک جنسیس
             genesis_block = self._create_genesis_block()
             self.chain = [genesis_block]
@@ -64,39 +66,66 @@ class Blockchain:
             logger.error(f"Failed to initialize new chain: {e}")
             raise RuntimeError("Failed to initialize blockchain") from e
 
+    def _initialize_special_accounts(self):
+        """Create system accounts if they don't exist"""
+        state_db = StateDB()
+        
+        # Create coinbase account
+        coinbase_address = "0x0000000000000000000000000000000000000000"
+        if not state_db.get_account(coinbase_address):
+            state_db.create_account(coinbase_address, "", 0)
+        
+        # Create genesis account
+        genesis_address = "0x0000000000000000000000000000000000000001"
+        if not state_db.get_account(genesis_address):
+            state_db.create_account(genesis_address, "", 0)
+        
+        # Set initial balance for genesis account
+        state_db.update_balance(genesis_address, 1000000)
+        
+        logger.info("System accounts initialized")
 
     def _create_genesis_block(self) -> Block:
-        """
-        این متد بلاک اولیه (Genesis Block) را تولید می‌کند.
-        در این متد، کلید عمومی از کلید خصوصی استخراج شده و به فرمت
-        PEM تبدیل می‌شود تا بتوانیم آدرس ولیدیتور را به صورت قطعی از آن بسازیم.
-        """
-        genesis_private_key = self._get_genesis_private_key()
-
-        genesis_public_key = genesis_private_key.public_key()
-
-        genesis_public_key_pem = genesis_public_key.public_bytes(
-            Encoding.PEM,
-            PublicFormat.SubjectPublicKeyInfo
-        ).decode('utf-8')
-
-        validator_address = ValidatorRegistry.get_validator_address(genesis_public_key_pem)
+        """Create genesis block with PoS mechanism"""
+        # Create private key for genesis validator
+        genesis_private_key = ec.generate_private_key(ec.SECP256K1())
         
-        genesis_stake = StakeManager.get_validator_stake(validator_address)
-
+        # Generate validator address
+        validator_address = ValidatorRegistry.get_validator_address(genesis_private_key)
+        
+        # Create genesis transaction
+        genesis_tx = Transaction(
+            sender="0x0000000000000000000000000000000000000000",
+            recipient="0x0000000000000000000000000000000000000001",
+            amount=1000000,  # Initial supply
+            data={"type": "genesis", "message": "Initial block of the chain"},
+            nonce=0  # Explicitly set nonce to 0
+        )
+        
+        # Create genesis block
         genesis_block = Block(
             index=0,
-            timestamp=int(time.time()),
-            transactions=[],
+            timestamp=0,
+            transactions=[genesis_tx],
             previous_hash="0",
             validator=validator_address,
-            stake_amount=genesis_stake,
-            difficulty=self.difficulty
+            stake_amount=1000000,
+            difficulty=self.difficulty,
+            nonce=0
         )
-
-        genesis_block.sign_block(genesis_private_key, genesis_stake)
-
-        return genesis_block
+        
+        # Sign genesis block
+        genesis_block.sign_block(genesis_private_key, 1000000)
+        
+        # Save to database
+        try:
+            block_id = BlockRepository.save_block(genesis_block)
+            TransactionRepository.save_transaction(genesis_tx, block_id)
+            logger.info(f"Genesis block created with hash: {genesis_block.hash}")
+            return genesis_block
+        except Exception as e:
+            logger.error(f"Failed to save genesis block: {e}")
+            raise
 
     def load_chain(self) -> List[Block]:
         """بارگذاری زنجیره از دیتابیس"""

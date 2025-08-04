@@ -79,12 +79,17 @@ def public_key_to_pem(public_key) -> str:
         format=PublicFormat.SubjectPublicKeyInfo
     ).decode()
 
-def address_from_public_key(public_key_pem: str) -> str:
-    """Generate address from public key"""
-    import hashlib
-    public_key = public_key_pem.encode()
-    sha256_hash = hashlib.sha256(public_key).hexdigest()
-    return '0x' + sha256_hash[:40]  # 20-byte address
+def address_from_public_key(public_key_pem):
+    """Generate address from public key PEM string"""
+    if isinstance(public_key_pem, str):
+        public_key_bytes = public_key_pem.encode('utf-8')
+    else:
+        public_key_bytes = public_key_pem
+        
+    # Hash the public key
+    public_key_hash = hashlib.sha256(public_key_bytes).hexdigest()
+    # Take first 40 characters (20 bytes) and prepend 0x
+    return '0x' + public_key_hash[:40]
 
 def generate_contract_address(sender: str, code: str) -> str:
     """Generate deterministic contract address"""

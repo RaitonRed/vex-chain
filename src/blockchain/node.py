@@ -8,7 +8,7 @@ from src.api.api_server import app as flask_app
 from src.utils.service_monitor import ServiceMonitor
 from src.utils.logger import logger
 from src.wallet.wallet import Wallet
-from utils.database import init_db
+from src.utils.database import init_db
 
 class BlockchainNode:
     def __init__(self, host='0.0.0.0', p2p_port=6000, api_port=5000):
@@ -184,8 +184,12 @@ class BlockchainNode:
         self._running = False
         logger.info("Shutting down node...")
         
+        # Stop P2P network first
         if self.p2p_network is not None:
-            self.p2p_network.socket.close()
+            self.p2p_network.stop()
             logger.info("P2P network stopped")
+        
+        # Give services time to shut down
+        time.sleep(1)
         
         logger.info("Node shutdown complete")

@@ -19,14 +19,25 @@ class Wallet:
         self.check_permissions()
         self.encryption_key = self._get_encryption_key()
 
-    def _get_encryption_key(self, node):
+    def _get_encryption_key(self):
+        """Get or generate encryption key with better error handling"""
         key_path = "data/wallet_key.key"
-        if not os.path.exists(key_path):
-            key = Fernet.generate_key()
-            with open(key_path, "wb") as key_file:
-                key_file.write(key)
-            os.chmod(key_path, 0o600)
-        return open(key_path, "wb").read()
+        try:
+            if not os.path.exists(key_path):
+                key = Fernet.generate_key()
+                with open(key_path, "wb") as key_file:
+                    key_file.write(key)
+                os.chmod(key_path, 0o600)
+                return key
+            else:
+                # ADDED: Debug logging
+                logger.debug(f"Reading encryption key from {key_path}")
+                with open(key_path, "rb") as key_file:
+                    return key_file.read()
+        except Exception as e:
+            logger.error(f"Failed to get encryption key: {e}")
+            raise
+
     
     def _encrypt_data(self, data):
         fernet = Fernet(self.encryption_key)
@@ -131,11 +142,18 @@ class Wallet:
         # Check if wallet exists
         if not os.path.exists(wallet_path):
             logger.warning("Wallet file not found, creating new one")
-            with open(wallet_path, 'w') as f:
-                json.dump({}, f)
-            return
+            try:
+                with open(wallet_path, 'w') as f:
+                    json.dump({}, f)
+                return
+            except Exception as e:
+                logger.error(f"Failed to create wallet file: {e}")
+                raise
 
         try:
+            # ADDED: Log file path
+            logger.debug(f"Loading wallet from {wallet_path}")
+            
             # Load wallet file
             with open(wallet_path, 'r') as f:
                 wallet_data = json.load(f)
@@ -163,9 +181,8 @@ class Wallet:
                         try:
                             decrypted_pk = self._decrypt_data(data['private_key'])
                         except Exception as e:
-                            logger.error(f"Decryption failed: {e}")
+                            logger.error(f"Decryption failed for {data['address']}: {e}")
 
-                    # FIX: Changed 'self.account' to 'self.accounts'
                     if data['address'] in self.accounts:
                         self.accounts[data['address']].update({
                             'name': name,
@@ -188,8 +205,10 @@ class Wallet:
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in wallet file: {e}")
+            logger.error(f"Wallet file content: {open(wallet_path).read()}")
         except Exception as e:
             logger.error(f"Error loading wallet: {e}")
+            logger.exception(e)  # ADDED: Full exception traceback
 
     def create_transaction(self, recipient, amount, data=None):
         account = self.get_account()
