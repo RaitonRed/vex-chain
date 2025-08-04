@@ -141,6 +141,9 @@ class Wallet:
                 wallet_data = json.load(f)
                 logger.debug(f"Loaded wallet data: {wallet_data}")
 
+            # Initialize accounts dictionary
+            self.accounts = {}
+            
             # Load from database
             with db_connection() as conn:
                 cursor = conn.cursor()
@@ -155,20 +158,28 @@ class Wallet:
             # Merge private keys
             for name, data in wallet_data.items():
                 if isinstance(data, dict) and 'address' in data:
+                    decrypted_pk = None
                     if 'private_key' in data:
                         try:
                             decrypted_pk = self._decrypt_data(data['private_key'])
                         except Exception as e:
                             logger.error(f"Decryption failed: {e}")
 
-                    if data['address'] in self.account:
+                    # FIX: Changed 'self.account' to 'self.accounts'
+                    if data['address'] in self.accounts:
                         self.accounts[data['address']].update({
                             'name': name,
                             'private_key': decrypted_pk
                         })
                         logger.debug(f"Merged private key for {data['address']}")
                     else:
-                        logger.warning(f"Address {data['address']} not found in DB")
+                        logger.warning(f"Address {data['address']} not found in DB. Creating new entry.")
+                        self.accounts[data['address']] = {
+                            'name': name,
+                            'address': data['address'],
+                            'public_key': data.get('public_key', ''),
+                            'private_key': decrypted_pk
+                        }
 
             # Warn if any account is missing a private key
             for addr, acc in self.accounts.items():
@@ -180,17 +191,17 @@ class Wallet:
         except Exception as e:
             logger.error(f"Error loading wallet: {e}")
 
-        def create_transaction(self, recipient, amount, data=None):
-            account = self.get_account()
-            nonce = StateDB().get_nonce(account['address']) + 1
+    def create_transaction(self, recipient, amount, data=None):
+        account = self.get_account()
+        nonce = StateDB().get_nonce(account['address']) + 1
             
-            tx = Transaction(
-                sender=account['address'],
-                recipient=recipient,
-                amount=amount,
-                data=data or {},
-                nonce=nonce
-            )
+        tx = Transaction(
+            sender=account['address'],
+            recipient=recipient,
+            amount=amount,
+            data=data or {},
+            nonce=nonce
+        )
             
-            tx.sign(self.get_private_key())
-            return tx
+        tx.sign(self.get_private_key())
+        return tx
