@@ -11,6 +11,51 @@ class StateDB:
         self.cache = {}
         self.nonce_prefix = b"nonce_"
 
+    def create_account(self, address: str, public_key_pem: str = "", nonce: int = 0):
+        """Create a new account in the database"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR IGNORE INTO accounts (address, public_key_pem, nonce)
+                VALUES (?, ?, ?)
+            ''', (address, public_key_pem, nonce))
+            conn.commit()
+
+    def get_account(self, address: str) -> dict:
+        """Get account information"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT address, public_key_pem, nonce FROM accounts WHERE address = ?', 
+                (address,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'address': row[0],
+                    'public_key_pem': row[1],
+                    'nonce': row[2]
+                }
+            return None
+    
+    def update_account(self, address: str, public_key_pem: str = None, nonce: int = None):
+        """Update account information"""
+        account = self.get_account(address) or {}
+        
+        # Use existing values if not provided
+        if public_key_pem is None:
+            public_key_pem = account.get('public_key_pem', "")
+        if nonce is None:
+            nonce = account.get('nonce', 0)
+        
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO accounts (address, public_key_pem, nonce)
+                VALUES (?, ?, ?)
+            ''', (address, public_key_pem, nonce))
+            conn.commit()
+
     def load_contract_code(self, contract_address):
         """بارگذاری کد قرارداد از دیتابیس"""
         with db_connection() as conn:
