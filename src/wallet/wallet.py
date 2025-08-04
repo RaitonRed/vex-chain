@@ -15,29 +15,30 @@ class Wallet:
     def __init__(self, node):
         self.node = node
         self.accounts = {}
+        self.encryption_key = self._get_encryption_key()
         self.load_accounts()
         self.check_permissions()
-        self.encryption_key = self._get_encryption_key()
 
     def _get_encryption_key(self):
-        """Get or generate encryption key with better error handling"""
+        """Safely get or generate encryption key"""
         key_path = "data/wallet_key.key"
+        os.makedirs("data", exist_ok=True)
+        
         try:
-            if not os.path.exists(key_path):
-                key = Fernet.generate_key()
-                with open(key_path, "wb") as key_file:
-                    key_file.write(key)
-                os.chmod(key_path, 0o600)
-                return key
-            else:
-                # ADDED: Debug logging
-                logger.debug(f"Reading encryption key from {key_path}")
+            # Try to read existing key
+            if os.path.exists(key_path):
                 with open(key_path, "rb") as key_file:
                     return key_file.read()
+            
+            # Generate new key
+            key = Fernet.generate_key()
+            with open(key_path, "wb") as key_file:
+                key_file.write(key)
+            os.chmod(key_path, 0o600)
+            return key
         except Exception as e:
             logger.error(f"Failed to get encryption key: {e}")
             raise
-
     
     def _encrypt_data(self, data):
         fernet = Fernet(self.encryption_key)
@@ -224,3 +225,63 @@ class Wallet:
             
         tx.sign(self.get_private_key())
         return tx
+    
+    def _validate_encryption_key(self, key):
+        try:
+            Fernet(key)  # Test if key is valid
+            return True
+        except:
+            return False
+
+    def _get_encryption_key(self):
+        key_path = "data/wallet_key.key"
+        os.makedirs("data", exist_ok=True)
+        
+        try:
+            # Try to read existing key
+            if os.path.exists(key_path):
+                with open(key_path, "rb") as key_file:
+                    key = key_file.read()
+                    if self._validate_encryption_key(key):
+                        return key
+                    else:
+                        logger.warning("Invalid encryption key found, generating new one")
+            
+            # Generate new key
+            key = Fernet.generate_key()
+            with open(key_path, "wb") as key_file:
+                key_file.write(key)
+            os.chmod(key_path, 0o600)
+            return key
+        except Exception as e:
+            logger.error(f"Failed to get encryption key: {e}")
+            raise
+
+    def rotate_encryption_key(self):
+        """Generate a new encryption key and re-encrypt all private keys"""
+        # Backup old key
+        old_key = self.encryption_key
+        
+        # Generate new key
+        self.encryption_key = Fernet.generate_key()
+        
+        # Re-encrypt all private keys
+        for acc in self.accounts.values():
+            if 'private_key' in acc:
+                plaintext = self._decrypt_data(acc['private_key'], old_key)
+                acc['private_key'] = self._encrypt_data(plaintext)
+        
+        # Save updated wallet
+        self.save_wallet()
+        
+        # Save new key to file
+        with open("data/wallet_key.key", "wb") as key_file:
+            key_file.write(self.encryption_key)
+        
+        logger.info("Encryption key rotated successfully")
+
+    def _decrypt_data(self, encrypted_data, key=None):
+        """Decrypt data with optional key override"""
+        key = key or self.encryption_key
+        fernet = Fernet(key)
+        return fernet.decrypt(encrypted_data.encode()).decode()
