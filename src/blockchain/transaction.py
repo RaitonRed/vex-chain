@@ -7,6 +7,7 @@ from src.blockchain.db.state_db import StateDB
 from src.utils.crypto import sign_data, verify_signature
 from src.utils.database import db_connection
 from src.utils import logger
+from src.utils.crypto import generate_secure_nonce
 
 @dataclass
 class Transaction:
@@ -31,6 +32,8 @@ class Transaction:
 
     nonce: int = 0
 
+    chain_id: int = field(default=1)
+
     def __post_init__(self):
         if self.tx_hash is None:
             self.tx_hash = self.calculate_hash()
@@ -45,7 +48,7 @@ class Transaction:
                 if self.sender == "0x0000000000000000000000000000000000000000":
                     self.nonce = 0
                 else:
-                    self.nonce = StateDB().get_nonce(self.sender) + 1
+                    self.nonce = generate_secure_nonce(self.sender)
             except Exception as e:
                 logger.error(f"Error getting nonce: {e}")
                 self.nonce = 0
@@ -89,26 +92,13 @@ class Transaction:
             contract_type=data.get('contract_type', 'NORMAL')
         )
 
-    def _calculate_hash(self, hash_data: Dict[str, Any]) -> str:
-        """Internal method for hash calculation"""
-        import hashlib
-        return hashlib.sha256(
-            json.dumps(hash_data, sort_keys=True).encode()
-        ).hexdigest()
-
     def calculate_hash(self) -> str:
         """Calculate transaction hash"""
-        return self._calculate_hash({
-            "sender": self.sender,
-            "recipient": self.recipient,
-            "amount": self.amount,
-            "data": self.data,
-            "timestamp": self.timestamp,
-            "contract_type": self.contract_type,
-            "nonce": self.nonce,
-            "gas_limit": self.gas_limit,
-            "gas_price": self.gas_price
-        })
+        import hashlib
+        return hashlib.blake2s(
+            f"{self.sender}{self.recipient}{self.amount}{self.chain_id}{self.nonce}{self.timestamp}{self.tx_hash}{self.gas_limit}{self.gas_price}{self.fee}".encode(),
+            digest_size=32
+        ).hexdigest()
 
     def sign(self, private_key) -> None:
         """Improved signing method"""
