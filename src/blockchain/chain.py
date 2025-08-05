@@ -13,29 +13,27 @@ from cryptography.hazmat.primitives import serialization
 import time
 from src.blockchain.block import Block
 from src.utils.database import db_connection
-from functools import lru_cache as LRUCache
+from src.utils.cache import LRUCache
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):
         self.difficulty = difficulty
         
         self.chain = []
-        self.block_cache = LRUCache(max_size=100)  # Cache for blocks
+        self.block_cache = LRUCache(capacity=100)  # Cache for blocks
         self.last_block = self.load_last_block()  # Load last block from cache or DB
         self._db_initialized = False  # Track if DB has been initialized
         self.p2p_network = None
 
-        # Initialize database only once
-        if not hasattr(self, '_db_initialized'):
-            try:
-                from src.utils.database import init_db
-                logger.info("Initializing database...")
-                init_db()
-                self._db_initialized = True
-                logger.info("Database initialized successfully")
-            except Exception as e:
-                logger.error(f"Database initialization failed: {e}")
-                raise RuntimeError("Failed to initialize database") from e
+        try:
+            from src.utils.database import init_db
+            logger.info("Initializing database...")
+            init_db()
+            self._db_initialized = True
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            raise RuntimeError("Failed to initialize database") from e
 
         # Load existing chain or create new one
         try:
@@ -69,7 +67,7 @@ class Blockchain:
         """Load the last block from cache or database"""
         with db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT MAX(index) FROM blocks')
+            cursor.execute('SELECT MAX("index") FROM blocks')
             max_index = cursor.fetchone()[0]
             if max_index is None:
                 return None
