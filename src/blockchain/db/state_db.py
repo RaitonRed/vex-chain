@@ -1,13 +1,13 @@
 import json
 import time
-from trie import MerklePatriciaTrie
+from trie import HexaryTrie
 from src.utils.database import db_connection
 
 class StateDB:
     """پیاده‌سازی StateDB برای قراردادهای هوشمند"""
     
     def __init__(self):
-        self.trie = MerklePatriciaTrie(db={})
+        self.trie = HexaryTrie(db={})
         self.cache = {}
         self.nonce_prefix = b"nonce_"
 
@@ -22,23 +22,39 @@ class StateDB:
             conn.commit()
 
     def get_account(self, address: str) -> dict:
-        """دریافت حساب با کش و درخواست به Trie"""
-        if address in self.cache:
-            return self.cache[address]
-        
-        encoded = self.trie.get(address.encode())
-        if not encoded:
+        """Get account information"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT address, public_key_pem, nonce FROM accounts WHERE address = ?', 
+                (address,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'address': row[0],
+                    'public_key_pem': row[1],
+                    'nonce': row[2]
+                }
             return None
-            
-        account = json.loads(encoded.decode())
-        self.cache[address] = account
-        return account
     
-    def update_account(self, address: str, account_data: dict):
-        """به‌روزرسانی حساب در Trie و کش"""
-        encoded = json.dumps(account_data).encode()
-        self.trie.update(address.encode(), encoded)
-        self.cache[address] = account_data
+    def update_account(self, address: str, public_key_pem: str = None, nonce: int = None):
+        """Update account information without overwriting public key"""
+        account = self.get_account(address) or {}
+        
+        # Use existing values if not provided
+        if public_key_pem is None:
+            public_key_pem = account.get('public_key_pem', "")
+        if nonce is None:
+            nonce = account.get('nonce', 0)
+        
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO accounts (address, public_key_pem, nonce)
+                VALUES (?, ?, ?)
+            ''', (address, public_key_pem, nonce))
+            conn.commit()
 
     def load_contract_code(self, contract_address):
         """بارگذاری کد قرارداد از دیتابیس"""
