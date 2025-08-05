@@ -1,13 +1,17 @@
-import json
 import hashlib
-import time
-from typing import Dict, Any, Tuple
+from typing import Any, Tuple
 from src.utils.logger import logger
-from src.utils.database import db_connection
+from src.blockchain.gas_tracker import GasTracker
+from src.blockchain.transaction import Transaction
 
 class SmartContractVM:
     """ماشین مجازی برای اجرای قراردادهای هوشمند"""
     
+    def __init__(self, state_db):
+        self.state_db = state_db
+        self.gas_tracker = GasTracker()
+
+
     GAS_COSTS = {
         'ADD': 3,
         'SUB': 3,
@@ -47,7 +51,13 @@ class SmartContractVM:
         self.error = None
         self.logs = []
         self.gas_remaining = tx.gas_limit
+
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (100 * 1024 * 1024 , 100 * 1024 * 1024))  # تنظیم محدودیت حافظه
         
+        import signal
+        signal.alarm(5)
+
         try:
             context = {
                 'sender': tx.sender,
@@ -145,12 +155,16 @@ class SmartContractVM:
             if tx.contract_type == "CALL":
                 self._save_storage(tx.contract_address, context['storage'])
             
-            return True, self.output
+            result = self._execute(context, tx)
+
+            return True, result
         
         except Exception as e:
             self.error = str(e)
             logger.error(f"Contract execution failed: {self.error}")
             return False, self.error
+        finally:
+            signal.alarm(0)  # خاموش کردن تایمر
 
     # دستورات ماشین مجازی
     def _op_add(self, context, params):
