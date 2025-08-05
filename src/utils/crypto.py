@@ -1,5 +1,6 @@
 import binascii
 import hashlib
+import time
 from datetime import datetime
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
