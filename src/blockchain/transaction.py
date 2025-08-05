@@ -41,6 +41,12 @@ class Transaction:
         if self.signature is None:
             self.sign()
 
+            # اعتبارسنجی هش
+        calculated_hash = self.calculate_hash()
+        if self.tx_hash != calculated_hash:
+            logger.warning(f"Transaction hash mismatch! Stored: {self.tx_hash}, Calculated: {calculated_hash}")
+            self.tx_hash = calculated_hash  # اصلاح هش نادرست
+
         # Set nonce automatically if not provided
         if self.nonce is None:
             try:
