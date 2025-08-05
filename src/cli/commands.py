@@ -7,7 +7,6 @@ from src.blockchain.consensus.consensus import Consensus
 from src.blockchain.transaction import Transaction
 from src.cli.style import CLITheme
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
 from src.cli.prompts import (
     prompt_address,
     prompt_amount,

@@ -6,7 +6,6 @@ from typing import List, Dict, Any
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from cryptography.exceptions import InvalidSignature
 from src.utils.logger import logger
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
 

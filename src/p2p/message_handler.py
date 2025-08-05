@@ -1,4 +1,3 @@
-import json
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.utils.logger import logger

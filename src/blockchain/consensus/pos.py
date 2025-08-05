@@ -1,4 +1,3 @@
-import random
 from src.blockchain.block import Block
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes

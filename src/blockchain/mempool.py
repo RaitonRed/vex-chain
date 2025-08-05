@@ -1,12 +1,11 @@
 import heapq
-from typing import List, Dict
+from typing import List
 from src.blockchain.contracts.contract_repository import ContractRepository
 from src.blockchain.db.state_db import StateDB
 from src.blockchain.transaction import Transaction
 from src.utils.logger import logger
 from src.utils.database import db_connection
 from src.p2p.network import P2PNetwork
-import json
 import time
 import sqlite3
 

@@ -1,8 +1,5 @@
 import hashlib
-import random
 from typing import Optional
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from cryptography.hazmat.primitives.asymmetric import ec
 import cryptography.hazmat.primitives.serialization as serialization
 from src.utils.database import db_connection
 from typing import Dict

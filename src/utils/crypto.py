@@ -10,9 +10,7 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     load_pem_public_key,
 )
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidSignature
 from src.utils.logger import logger
 
 def generate_ecc_key_pair():

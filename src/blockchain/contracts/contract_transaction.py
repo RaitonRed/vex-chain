@@ -1,9 +1,7 @@
-# src/blockchain/contract_transaction.py
 import json
 from dataclasses import dataclass, field
 from typing import Dict, Any
 from src.blockchain.transaction import Transaction
-from src.utils.crypto import sign_data, verify_signature
 
 @dataclass
 class ContractTransaction(Transaction):

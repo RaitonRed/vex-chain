@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Callable, Dict
+from typing import Callable
 from src.cli.commands import CommandExecutor
-from src.cli.outputs import display_menu, print_error, print_success
+from src.cli.outputs import display_menu, print_error
 from src.cli.style import CLITheme
 
 @dataclass

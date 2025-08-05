@@ -1,6 +1,5 @@
-# consensus.py
 import random
-from typing import List, Dict
+from typing import List
 from src.utils.logger import logger
 
 class Consensus:

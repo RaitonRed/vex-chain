@@ -1,7 +1,6 @@
 import json
 import time
 from typing import List, Optional
-from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.blockchain.consensus.consensus import Consensus
@@ -12,16 +11,10 @@ from src.blockchain.db.state_db import StateDB
 from src.utils.logger import logger
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
 import time
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from src.blockchain.block import Block
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
-from src.blockchain.consensus.stake_manager import StakeManager
 from src.utils.database import db_connection
-from src.utils.crypto import generate_ecc_key_pair, sign_message, verify_signature
-from src.blockchain.models.accounts import Account
-
 from src.utils.database import db_connection
 
 

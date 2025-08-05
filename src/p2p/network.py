@@ -1,8 +1,6 @@
 import socket
 import threading
 import json
-import time
-import logging
 from src.p2p.message_handler import MessageHandler
 from src.p2p.peer_discovery import PeerDiscovery
 from src.blockchain.chain import Blockchain

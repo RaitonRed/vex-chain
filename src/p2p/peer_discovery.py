@@ -1,5 +1,4 @@
 import threading
-import socket
 import time
 from src.utils.logger import logger
 
