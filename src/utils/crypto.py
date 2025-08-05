@@ -2,7 +2,7 @@ import binascii
 import hashlib
 from datetime import datetime
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     PublicFormat,
@@ -30,33 +30,19 @@ def sign_message(private_key, message: str) -> str:
     return binascii.hexlify(signature).decode('utf-8')
 
 def generate_key_pair():
-    """Generate ECDSA key pair using secp256k1 curve"""
-    private_key = ec.generate_private_key(ec.SECP256K1(), default_backend())
+    """Generate ECDSA key pair using ed25519 curve"""
+    private_key = ed25519.Ed25519PrivateKey.generate()
     public_key = private_key.public_key()
     return private_key, public_key
 
 def sign_data(private_key, data: str) -> str:
     """Sign data with private key"""
-    if isinstance(data, str):
-        data = data.encode('utf-8')
-    signature = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
-    return binascii.hexlify(signature).decode('utf-8')
+    return private_key.sign(data)
 
-def verify_signature(public_key_pem: str, signature: str, message: str) -> bool:
+def verify_signature(public_key: str, signature: str, message: str) -> bool:
     """Verify signature with public key"""
     try:
-        public_key = load_pem_public_key(
-            public_key_pem.encode('utf-8'),
-            backend=default_backend()
-        )
-        if isinstance(message, str):
-            message = message.encode('utf-8')
-        sig_bytes = binascii.unhexlify(signature)
-        public_key.verify(
-            sig_bytes,
-            message,
-            ec.ECDSA(hashes.SHA256())
-        )
+        public_key.verify(signature, message)
         return True
     except Exception as e:
         logger.error(f"Signature verification failed: {e}")
@@ -94,3 +80,13 @@ def generate_contract_address(sender: str, code: str) -> str:
     unique_data = f"{sender}{code}{datetime.now().timestamp()}"
     sha256_hash = hashlib.sha256(unique_data.encode()).hexdigest()
     return '0x' + sha256_hash[:40]  # 20-byte address
+
+def generate_secure_nonce(sender: str) -> int:
+    """Generate a secure nonce for transaction"""
+    timestamp = int(time.time() * 1000)  # Current time in milliseconds
+    hash_base = f"{sender}{timestamp}".encode()
+
+    return int.from_bytes(
+        hashlib.shake_128(hash_base).digest(4),  # Use first 8 bytes for nonce
+        byteorder='big'
+    )

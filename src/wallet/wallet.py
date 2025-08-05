@@ -11,14 +11,35 @@ from src.blockchain.transaction import Transaction
 from src.utils.database import db_connection
 from src.utils.logger import logger
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
+from src.utils.crypto import generate_secure_nonce
+
 class Wallet:
     def __init__(self, node):
         self.node = node
         self.accounts = {}
-        self.encryption_key = self._get_encryption_key()
+        # self.encryption_key = self._get_encryption_key()
+        self.encryption_key = self._drive_encryption_key()
         self.load_accounts()
         self.check_permissions()
 
+    def _drive_encryption_key(self):
+        """Safely get or generate encryption key"""
+        password = os.getenv("WALLET_PASSWORD", "default_password")
+        salt = b"a1b2c3d4e5f6g7h8i9j0"  # Use a secure random salt in production
+    
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA512(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend()
+        )
+    
+        return kdf.derive(password)
+    
     def _get_encryption_key(self):
         """Safely get or generate encryption key"""
         key_path = "data/wallet_key.key"
@@ -51,7 +72,7 @@ class Wallet:
     def create_account(self, account_name):
         """Create new cryptographic account"""
         private_key = ec.generate_private_key(
-            ec.SECP256K1(),
+            ec.SECP521R1(),
             default_backend()
         )
         
@@ -63,13 +84,19 @@ class Wallet:
         ).decode('utf-8')
         
         public_key = private_key.public_key()
+
+        public_bytes = public_key.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint
+        )
+
         public_pem = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ).decode('utf-8')
         
         # Generate address
-        address = '0x' + hashlib.sha256(public_pem.encode()).hexdigest()[:40]
+        address = 'VcX' + hashlib.blake2b(public_bytes, digest_size=20).hexdigest()
         
         self.accounts[account_name] = {
             'name': account_name,
