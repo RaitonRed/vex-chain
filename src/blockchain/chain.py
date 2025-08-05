@@ -1,5 +1,4 @@
 import json
-import time
 from typing import List, Optional
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
@@ -13,15 +12,17 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 import time
 from src.blockchain.block import Block
-from src.blockchain.consensus.validator_registry import ValidatorRegistry
 from src.utils.database import db_connection
-from src.utils.database import db_connection
-
+from functools import lru_cache as LRUCache
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):
         self.difficulty = difficulty
+        
         self.chain = []
+        self.block_cache = LRUCache(max_size=100)  # Cache for blocks
+        self.last_block = self.load_last_block()  # Load last block from cache or DB
+        self._db_initialized = False  # Track if DB has been initialized
         self.p2p_network = None
 
         # Initialize database only once
@@ -63,6 +64,17 @@ class Blockchain:
             except Exception as reset_error:
                 logger.error(f"Failed to create fresh blockchain: {reset_error}")
                 raise RuntimeError("Complete blockchain initialization failure") from reset_error
+
+    def load_last_block(self) -> Optional[Block]:
+        """Load the last block from cache or database"""
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT MAX(index) FROM blocks')
+            max_index = cursor.fetchone()[0]
+            if max_index is None:
+                return None
+            return BlockRepository.get_block_by_index(max_index)            
+
 
     def _reset_blockchain(self):
         """Reset blockchain database to initial state"""
@@ -241,7 +253,7 @@ class Blockchain:
         logger.info(f"Successfully loaded chain with {len(chain)} blocks")
         return chain
     
-    def add_block(self, transactions: List[Transaction] = None, 
+    def add_block(self, block: Block, transactions: List[Transaction] = None, 
          validator_private_key: ec.EllipticCurvePrivateKey = None,
          external_block: Block = None,
          selected_validator_address: str = None) -> Optional[Block]:
@@ -251,6 +263,16 @@ class Blockchain:
         - اگر selected_validator_address مشخص شده باشد، از آن استفاده می‌شود
         - در غیر این صورت، بلاک محلی ایجاد می‌شود
         """
+
+        if not block.is_valid(self.last_block):
+            logger.error(f"Invalid block structure: {block.hash}")
+            return None
+
+        block_id = BlockRepository.save_block(block)
+
+        self.last_block = block  # Update last block in cache
+        self.block_cache.put(block.index, block)  # Cache the new block
+
         # حالت 1: بلاک از شبکه دریافت شده است
         if external_block:
             return self._add_external_block(external_block)
