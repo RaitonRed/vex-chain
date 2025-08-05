@@ -70,6 +70,9 @@ class P2PNetwork:
     def handle_peer_connection(self, conn, addr):
         """Handle messages from a peer connection"""
         try:
+
+            MAX_MSG_SIZE = 10 * 1024 * 1024  # 10 MB
+
             with conn:
                 peer_id = f"{addr[0]}:{addr[1]}"
                 logger.info(f"Handling connection from {peer_id}")
@@ -79,13 +82,17 @@ class P2PNetwork:
                         # Receive message length (first 10 bytes)
                         raw_length = conn.recv(10)
                         if not raw_length:
-                            break
+                            return
                         
                         # Receive actual message
                         length = int(raw_length.decode().strip())
                         data = conn.recv(length)
                         if not data:
                             break
+
+                        if length > MAX_MSG_SIZE:
+                            logger.warning(f"Message from {peer_id} exceeds max size: {length} bytes")
+                            continue
 
                         # Parse message
                         message = json.loads(data.decode())
