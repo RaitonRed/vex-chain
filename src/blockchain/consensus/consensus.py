@@ -5,13 +5,15 @@ from src.utils.logger import logger
 class Consensus:
     """پیاده‌سازی الگوریتم اجماع Proof of Stake"""
 
+    def __init__(self, blockchain, stake_manager):
+        self.blockchain = blockchain
+        self.stake_manager = stake_manager
+
     @staticmethod
-    def select_validator():
+    def select_validator(self):
         """انتخاب ولیدیتور از بین ولیدیتورهای فعال"""
-        # Import داخلی برای جلوگیری از circular import
-        from src.blockchain.consensus.stake_manager import StakeManager
         
-        validators = StakeManager.get_active_validators()
+        validators = self.stake_manager.get_active_validators()
         
         if not validators:
             logger.error("No active validators available")

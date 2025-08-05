@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+from blockchain.consensus.consensus import Consensus
 from src.blockchain.chain import Blockchain
 from src.blockchain.mempool import Mempool
 from src.p2p.network import P2PNetwork
@@ -16,11 +17,32 @@ class BlockchainNode:
         self.api_port = api_port
         
         self.blockchain = None
-        self.mempool = None
         self.p2p_network = None
+        self.mempool = None
+        self.wallet = None
+        self.consensus = None
 
-        self.wallet = Wallet(self)
+        # add default modules
+        self.modules = {
+            'blockchain': Blockchain(),
+            'p2p': P2PNetwork(host, p2p_port),
+            'mempool': Mempool(),
+            'wallet': Wallet(),
+            'consensus': Consensus()
+        }
         
+        # Inject dependencies between modules
+        self.blockchain = self.modules['blockchain']
+        self.p2p_network = self.modules['p2p']
+        self.mempool = self.modules['mempool']
+        self.wallet = self.modules['wallet']
+        self.consensus = self.modules['consensus']
+        self.modules['p2p'].inject('blockchain', self.modules['blockchain'])
+        self.modules['blockchain'].inject('p2p', self.modules['p2p'])
+        self.modules['mempool'].inject('blockchain', self.modules['blockchain'])
+        self.modules['wallet'].inject('blockchain', self.modules['blockchain'])
+        self.modules['consensus'].inject('blockchain', self.modules['blockchain'])
+
         self.monitor = None
         self._services_ready = threading.Event()
         self._running = False
@@ -45,26 +67,10 @@ class BlockchainNode:
             logger.info("initializing database...")
             init_db()
 
-            logger.info("Initializing blockchain...")
-            self.blockchain = Blockchain()
-            
-            logger.info("Initializing mempool...")
-            self.mempool = Mempool()
-            
-            logger.info("🟢 Starting P2P network...")
-            self.p2p_network = P2PNetwork(
-                host=self.host,
-                port=self.p2p_port,
-                blockchain=self.blockchain
-            )
-            
-            self._setup_dependencies()
-            
-            print("🟢 Starting network services...")
-            self._start_p2p_service()
-            time.sleep(1)
-            self._start_api_service()
-            time.sleep(1)
+            for name, module in self.modules.items():
+                if hasattr(module, 'initialize'):
+                    logger.info(f"Initializing {name} module...")
+                    module.start()
             
             self._start_monitoring()
             
