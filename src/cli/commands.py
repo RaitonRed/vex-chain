@@ -6,6 +6,8 @@ from src.blockchain.contracts.contract_manager import ContractManager
 from src.blockchain.consensus.consensus import Consensus
 from src.blockchain.transaction import Transaction
 from src.cli.style import CLITheme
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
 from src.cli.prompts import (
     prompt_address,
     prompt_amount,
@@ -27,7 +29,6 @@ from src.cli.outputs import (
     print_warning,
     print_info
 )
-from cryptography.hazmat.primitives.asymmetric import ec
 
 class CommandExecutor:
     def __init__(self, node):
@@ -64,16 +65,49 @@ class CommandExecutor:
         display_peers(peers)
 
     def stake_coins(self):
-        """Handle staking operation"""
         try:
-            address = prompt_address("Your address")
-            amount = prompt_amount("Amount to stake")
+            # Get account selection
+            accounts = self.node.wallet.accounts
+            if not accounts:
+                print("❌ No accounts available")
+                return
+                
+            print("Available accounts:")
+            for i, (addr, acc) in enumerate(accounts.items(), 1):
+                print(f"{i}. {addr} ({acc.get('name', 'No name')})")
+                
+            choice = input("Select account: ")
+            if not choice.isdigit() or int(choice) > len(accounts):
+                print("❌ Invalid selection")
+                return
+                
+            address = list(accounts.keys())[int(choice)-1]
+            account = accounts[address]
             
-            StakeManager.stake(address, amount, ValidatorRegistry.get_public_key_pem(address))
-            print_success(f"Successfully staked {amount} coins")
+            # Get staking amount
+            amount = float(input("Amount to stake: "))
             
+            # Get private key and public key
+            private_key = account.get('private_key')
+            public_key = account.get('public_key')  # دریافت کلید عمومی
+            
+            if not private_key or not public_key:
+                print("❌ Private key or public key not available for this account")
+                return
+                
+            # Stake coins - call static method directly
+            tx_hash = StakeManager.stake(
+                address=address,
+                amount=amount,
+                public_key_pem=public_key,
+            )
+            
+            if tx_hash:
+                print(f"✅ Staked {amount} coins. TX Hash: {tx_hash[:10]}...")
+            else:
+                print("❌ Staking failed")
         except Exception as e:
-            print_error(f"Staking failed: {str(e)}")
+            print(f"❌ Staking failed: {e}")
 
     def unstake_coins(self):
         """Handle unstaking operation"""
@@ -91,11 +125,11 @@ class CommandExecutor:
 
     def show_validators(self):
         """Display active validators"""
-        validators = ValidatorRegistry.get_active_validators()
+        validators = StakeManager.get_active_validators()
         display_validators(validators)
 
     def mine_block(self):
-        """Manual block mining"""
+        """Manual block mining با انتخاب ولیدیتور واقعی از دیتابیس"""
         if not self.node.blockchain.chain:
             print_error("Blockchain is not initialized")
             return
@@ -103,27 +137,65 @@ class CommandExecutor:
         validators = ValidatorRegistry.get_active_validators()
         if not validators:
             print_error("No active validators found")
-            return
+            print_info("Creating a test validator...")
+            self._create_test_validator()
+            validators = ValidatorRegistry.get_active_validators()
 
         transactions = list(self.node.mempool.transactions.values())
         if not transactions:
             print_warning("No transactions in the mempool")
-            return
+            # برای تست، یک تراکنش ساده ایجاد کنیم
+            print_info("Creating a test transaction...")
+            self._create_test_transaction()
+            transactions = list(self.node.mempool.transactions.values())
 
         try:
-            # Generate a temporary validator key for mining
+            # انتخاب ولیدیتور از دیتابیس
+            selected_validator = Consensus.select_validator()
+            
+            if not selected_validator:
+                print_error("Validator selection failed")
+                return
+                
+            print_info(f"Selected validator: {selected_validator}")
+            
+            # دریافت کلید عمومی ولیدیتور انتخاب شده از دیتابیس
+            public_key_pem = ValidatorRegistry.get_public_key_pem(selected_validator)
+            if not public_key_pem:
+                print_error(f"Public key not found for validator: {selected_validator}")
+                return
+            
+            # ایجاد کلید موقت (در پیاده‌سازی واقعی باید کلید واقعی ولیدیتور باشد)
+            # اما آدرس آن باید با selected_validator یکسان باشد
             validator_key = ec.generate_private_key(ec.SECP256K1())
-            new_block = self.node.blockchain.add_block(transactions, validator_key)
+            
+            # اضافه کردن بلاک با مشخص کردن ولیدیتور انتخاب شده
+            new_block = self.node.blockchain.add_block(
+                transactions, 
+                validator_key,
+                selected_validator_address=selected_validator  # پارامتر جدید
+            )
+            
             if new_block:
-                print_success(f"Block #{new_block.index} mined successfully!")
-                # Remove mined transactions from the mempool
-                self.node.mempool.remove_transactions([tx.tx_hash for tx in transactions])
-                # Distribute rewards to validators
+                print_success(f"✅ Block #{new_block.index} mined successfully!")
+                print_info(f"   Validator: {new_block.validator}")
+                print_info(f"   Transactions: {len(new_block.transactions)}")
+                print_info(f"   Hash: {new_block.hash[:16]}...")
+                
+                # Remove mined transactions from mempool
+                tx_hashes = [tx.tx_hash for tx in transactions]
+                self.node.mempool.remove_transactions(tx_hashes)
+                
+                # Distribute rewards
                 StakeManager.distribute_rewards(new_block)
+                print_info(f"   Rewards distributed to validator")
             else:
                 print_error("Block mining failed")
+                
         except Exception as e:
             print_error(f"Mining error: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def deploy_contract(self):
         """Handle contract deployment"""
@@ -398,7 +470,49 @@ class CommandExecutor:
             
         address = self.node.wallet.create_account(account_name)
         print_success(f"Account created successfully! Address: {address}")
-    
+
+    def _create_test_validator(self):
+        """ایجاد ولیدیتور تست برای demo"""
+        try:
+            from cryptography.hazmat.primitives import serialization
+            
+            validator_key = ec.generate_private_key(ec.SECP256K1())
+            public_key_pem = validator_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ).decode()
+            
+            validator_address = ValidatorRegistry.get_validator_address(validator_key)
+            
+            ValidatorRegistry.register_validator(
+                address=validator_address,
+                public_key_pem=public_key_pem,
+                stake=10000  # stake بالا برای تست
+            )
+            print_success(f"Test validator created: {validator_address}")
+            
+        except Exception as e:
+            print_error(f"Failed to create test validator: {e}")
+
+    def _create_test_transaction(self):
+        """ایجاد تراکنش تست"""
+        try:
+            from src.blockchain.transaction import Transaction
+            
+            test_tx = Transaction(
+                sender="0x1234567890123456789012345678901234567890",
+                recipient="0x0987654321098765432109876543210987654321",
+                amount=10.0,
+                data={"type": "test", "message": "Test transaction for mining"}
+            )
+            
+            self.node.mempool.add_transaction(test_tx)
+            print_success("Test transaction created")
+
+        except Exception as e:
+            print_error(f"Failed to create test transaction: {e}")
+
+
     def exit_node(self):
         """Handle node shutdown"""
         self.node.stop()

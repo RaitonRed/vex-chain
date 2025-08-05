@@ -14,12 +14,13 @@ class ValidatorRegistry:
     
     @staticmethod
     def register_validator(address: str, public_key_pem: str, stake: float):
+        """Unified validator registration"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO validators 
                 (address, public_key_pem, stake, last_active)
-                VALUES (?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ''', (address, public_key_pem, stake))
             conn.commit()
 
@@ -75,57 +76,32 @@ class ValidatorRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    @staticmethod
-    def select_validator():
-        validators = ValidatorRegistry.get_active_validators()
-        
-        if not validators:
-            logger.error("No active validators available")
-            return None
-
-        total_stake = sum(validators.values())
-        if total_stake <= 0:
-            logger.error("Total stake is zero or negative")
-            return None
-
-        selection_point = random.uniform(0, total_stake)
-        current_sum = 0
-
-        for address, stake in validators.items():
-            current_sum += stake
-            if current_sum >= selection_point:
-                logger.info(f"Selected validator: {address} with stake {stake}")
-                return address
-
-        logger.error("Validator selection failed")
-        return None
-
-class StakeManager:
-    """مدیریت سهام‌گذاری و پاداش‌ها"""
+#    @staticmethod
+#    def select_validator():
+#        from src.blockchain.consensus.stake_manager import StakeManager
+#        validators = StakeManager.get_active_validators()
+#        
+#        if not validators:
+#            logger.error("No active validators available")
+#            return None
+#
+#        total_stake = sum(validators.values())
+#        if total_stake <= 0:
+#            logger.error("Total stake is zero or negative")
+#            return None
+#
+#        selection_point = random.uniform(0, total_stake)
+#        current_sum = 0
+#
+#        for address, stake in validators.items():
+#            current_sum += stake
+#            if current_sum >= selection_point:
+#                logger.info(f"Selected validator: {address} with stake {stake}")
+#                return address
+#
+#        logger.error("Validator selection failed")
+#        return None
 
     @staticmethod
-    def get_active_validators() -> Dict[str, float]:
-        """دریافت لیست ولیدیتورهای فعال و سهام آنها"""
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT address, stake FROM validators 
-                WHERE stake > 0 AND last_active > datetime('now', '-1 day')
-            ''')
-            return {row[0]: row[1] for row in cursor.fetchall()}
-
-    @staticmethod
-    def stake(address: str, amount: float):
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR IGNORE INTO validators (address, stake, last_active)
-                VALUES (?, ?, datetime('now'))
-            ''', (address, amount))
-            
-            cursor.execute('''
-                UPDATE validators 
-                SET stake = stake + ?, last_active = datetime('now')
-                WHERE address = ?
-            ''', (amount, address))
-            conn.commit()
+    def calculate_address(public_key_pem: str) -> str:
+        return hashlib.sha256(public_key_pem.encode()).hexdigest()[:40]

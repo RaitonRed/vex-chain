@@ -2,8 +2,6 @@
 import random
 from typing import List, Dict
 from src.utils.logger import logger
-from src.blockchain.consensus.validator_registry import ValidatorRegistry
-from src.blockchain.consensus.stake_manager import StakeManager
 
 class Consensus:
     """پیاده‌سازی الگوریتم اجماع Proof of Stake"""
@@ -11,7 +9,10 @@ class Consensus:
     @staticmethod
     def select_validator():
         """انتخاب ولیدیتور از بین ولیدیتورهای فعال"""
-        validators = ValidatorRegistry.get_active_validators()
+        # Import داخلی برای جلوگیری از circular import
+        from src.blockchain.consensus.stake_manager import StakeManager
+        
+        validators = StakeManager.get_active_validators()
         
         if not validators:
             logger.error("No active validators available")
@@ -60,3 +61,10 @@ class Consensus:
                 return False
                 
         return True
+
+    @staticmethod
+    def cumulative_difficulty(chain: List['Block']) -> float:
+        """محاسبه سختی تجمعی زنجیره (برای حل تعارض)"""
+        if not chain:
+            return 0
+        return sum(block.difficulty for block in chain)

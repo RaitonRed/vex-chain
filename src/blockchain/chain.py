@@ -31,23 +31,76 @@ class Blockchain:
         self.chain = []
         self.p2p_network = None
 
+        # Initialize database only once
         if not hasattr(self, '_db_initialized'):
             try:
                 from src.utils.database import init_db
+                logger.info("Initializing database...")
                 init_db()
                 self._db_initialized = True
+                logger.info("Database initialized successfully")
             except Exception as e:
                 logger.error(f"Database initialization failed: {e}")
-                raise
+                raise RuntimeError("Failed to initialize database") from e
 
-        self.chain = self.load_chain()
-        if not self.chain:
-            logger.info("No valid chain found, initializing new blockchain")
-            self._initialize_new_chain()
-        elif not Consensus.is_chain_valid(self.chain):
-            logger.warning("Invalid chain detected, resetting database...")
-            self._reset_blockchain()
-            self._initialize_new_chain()
+        # Load existing chain or create new one
+        try:
+            logger.info("Loading blockchain from database...")
+            self.chain = self.load_chain()
+            
+            if not self.chain:
+                logger.info("No existing chain found, creating new blockchain")
+                self._reset_blockchain()  # Clean slate
+                self._initialize_new_chain()
+            elif not Consensus.is_chain_valid(self.chain):
+                logger.warning("Existing chain is invalid, resetting...")
+                self._reset_blockchain()
+                self._initialize_new_chain()
+            else:
+                logger.info(f"Successfully loaded blockchain with {len(self.chain)} blocks")
+                
+        except Exception as e:
+            logger.error(f"Blockchain initialization failed: {e}")
+            # Last resort: try to create completely fresh blockchain
+            try:
+                logger.info("Attempting complete blockchain reset...")
+                self._reset_blockchain()
+                self._initialize_new_chain()
+                logger.info("Fresh blockchain created successfully")
+            except Exception as reset_error:
+                logger.error(f"Failed to create fresh blockchain: {reset_error}")
+                raise RuntimeError("Complete blockchain initialization failure") from reset_error
+
+    def _reset_blockchain(self):
+        """Reset blockchain database to initial state"""
+        logger.info("Resetting blockchain database...")
+        try:
+            # Clear in-memory chain
+            self.chain = []
+
+            # Reset SQL database tables
+            with db_connection() as conn:
+                cursor = conn.cursor()
+                # Delete all transactions first (foreign key constraint)
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM blocks")
+                # Reset autoincrement counters
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name='blocks'")
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
+                conn.commit()
+            
+            # Reset StateDB if implemented
+            if hasattr(StateDB, 'reset'):
+                StateDB().reset()
+                logger.info("StateDB reset complete")
+            else:
+                logger.warning("StateDB reset not implemented")
+            
+            logger.info("Blockchain reset successfully")
+        except Exception as e:
+            logger.error(f"Blockchain reset failed: {e}")
+            raise RuntimeError("Blockchain reset failed") from e
+
 
     def set_p2p_network(self, p2p_network):
         """Set P2P network reference after initialization"""
@@ -87,46 +140,93 @@ class Blockchain:
 
     def _create_genesis_block(self) -> Block:
         """Create genesis block with PoS mechanism"""
-        # Create private key for genesis validator
-        genesis_private_key = ec.generate_private_key(ec.SECP256K1())
-        
-        # Generate validator address
-        validator_address = ValidatorRegistry.get_validator_address(genesis_private_key)
-        
-        # Create genesis transaction
-        genesis_tx = Transaction(
-            sender="0x0000000000000000000000000000000000000000",
-            recipient="0x0000000000000000000000000000000000000001",
-            amount=1000000,  # Initial supply
-            data={"type": "genesis", "message": "Initial block of the chain"},
-            nonce=0  # Explicitly set nonce to 0
-        )
-        
-        # Create genesis block
-        genesis_block = Block(
-            index=0,
-            timestamp=0,
-            transactions=[genesis_tx],
-            previous_hash="0",
-            validator=validator_address,
-            stake_amount=1000000,
-            difficulty=self.difficulty,
-            nonce=0
-        )
-        
-        # Sign genesis block
-        genesis_block.sign_block(genesis_private_key, 1000000)
-        
-        # Save to database
         try:
-            block_id = BlockRepository.save_block(genesis_block)
-            TransactionRepository.save_transaction(genesis_tx, block_id)
-            logger.info(f"Genesis block created with hash: {genesis_block.hash}")
-            return genesis_block
+            # Create private key for genesis validator
+            genesis_private_key = ec.generate_private_key(ec.SECP256K1())
+            
+            # Generate validator address
+            validator_address = ValidatorRegistry.get_validator_address(genesis_private_key)
+            
+            # Generate public key PEM
+            public_key_pem = genesis_private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ).decode()
+            
+            # Register genesis validator first
+            ValidatorRegistry.register_validator(
+                address=validator_address,
+                public_key_pem=public_key_pem,
+                stake=1000000  # Genesis validator stake
+            )
+            
+            # Create genesis transaction
+            genesis_tx = Transaction(
+                sender="0x0000000000000000000000000000000000000000",
+                recipient="0x0000000000000000000000000000000000000001",
+                amount=1000000,  # Initial supply
+                data={"type": "genesis", "message": "Initial block of the chain"},
+                nonce=0  # Explicitly set nonce to 0
+            )
+            
+            # Create genesis block
+            genesis_block = Block(
+                index=0,
+                timestamp=0,
+                transactions=[genesis_tx],
+                previous_hash="0",
+                validator=validator_address,
+                stake_amount=1000000,
+                difficulty=self.difficulty,
+                nonce=0
+            )
+            
+            # Sign genesis block
+            genesis_block.sign_block(genesis_private_key, 1000000)
+            
+            # Save to database with proper error handling
+            try:
+                logger.info("Saving genesis block to database...")
+                block_id = BlockRepository.save_block(genesis_block)
+                
+                if block_id is None:
+                    raise RuntimeError("Failed to save genesis block: block_id is None")
+                    
+                logger.info(f"Genesis block saved with ID: {block_id}")
+                
+                # Save genesis transaction
+                logger.info("Saving genesis transaction...")
+                tx_id = TransactionRepository.save_transaction(genesis_tx, block_id)
+                
+                if tx_id is None:
+                    raise RuntimeError("Failed to save genesis transaction: tx_id is None")
+                    
+                logger.info(f"Genesis transaction saved with ID: {tx_id}")
+                logger.info(f"Genesis block created successfully with hash: {genesis_block.hash}")
+                
+                return genesis_block
+                
+            except Exception as db_error:
+                logger.error(f"Database error while saving genesis block: {db_error}")
+                
+                # Try to clean up any partial data
+                try:
+                    with db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM blocks WHERE index = 0')
+                        cursor.execute('DELETE FROM transactions WHERE sender = ? AND recipient = ?', 
+                                    (genesis_tx.sender, genesis_tx.recipient))
+                        conn.commit()
+                        logger.info("Cleaned up partial genesis data")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to cleanup genesis data: {cleanup_error}")
+                
+                raise RuntimeError(f"Failed to save genesis block to database: {db_error}") from db_error
+                
         except Exception as e:
-            logger.error(f"Failed to save genesis block: {e}")
-            raise
-
+            logger.error(f"Failed to create genesis block: {e}")
+            raise RuntimeError(f"Genesis block creation failed: {e}") from e
+        
     def load_chain(self) -> List[Block]:
         """بارگذاری زنجیره از دیتابیس"""
         chain = []
@@ -148,12 +248,14 @@ class Blockchain:
         logger.info(f"Successfully loaded chain with {len(chain)} blocks")
         return chain
     
-    def add_block(self, transactions: List[Transaction], 
-             validator_private_key: ec.EllipticCurvePrivateKey = None,
-             external_block: Block = None) -> Optional[Block]:
+    def add_block(self, transactions: List[Transaction] = None, 
+         validator_private_key: ec.EllipticCurvePrivateKey = None,
+         external_block: Block = None,
+         selected_validator_address: str = None) -> Optional[Block]:
         """
         اضافه کردن بلاک جدید به زنجیره
         - اگر external_block ارائه شده باشد، بلاک از شبکه دریافت شده است
+        - اگر selected_validator_address مشخص شده باشد، از آن استفاده می‌شود
         - در غیر این صورت، بلاک محلی ایجاد می‌شود
         """
         # حالت 1: بلاک از شبکه دریافت شده است
@@ -161,11 +263,15 @@ class Blockchain:
             return self._add_external_block(external_block)
         
         # حالت 2: ایجاد بلاک جدید محلی
-        new_block = self._create_new_block(transactions, validator_private_key)
+        new_block = self._create_new_block(
+            transactions, 
+            validator_private_key, 
+            selected_validator_address
+        )
         if new_block:
             if hasattr(self, 'p2p_network') and self.p2p_network:
                 self.p2p_network.broadcast_block(new_block)
-    
+
         return new_block
             
     def _add_external_block(self, block: Block) -> Optional[Block]:
@@ -294,7 +400,6 @@ class Blockchain:
             logger.error(f"Failed to save genesis block: {e}")
             raise
     
-    
     def get_last_block(self) -> Optional[Block]:
         """دریافت آخرین بلاک زنجیره"""
         if not self.chain:
@@ -340,7 +445,8 @@ class Blockchain:
             conn.commit()
 
     def _create_new_block(self, transactions: List[Transaction], 
-                     validator_private_key: ec.EllipticCurvePrivateKey) -> Optional[Block]:
+                 validator_private_key: ec.EllipticCurvePrivateKey,
+                 selected_validator_address: str = None) -> Optional[Block]:
         """ایجاد و افزودن بلاک جدید محلی"""
         if not transactions:
             logger.warning("Cannot add empty block")
@@ -375,9 +481,14 @@ class Blockchain:
             logger.warning("No valid transactions to include in block")
             return None
 
-        # دریافت اطلاعات ولیدیتور
-        validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
-        stake = ValidatorRegistry.get_validator_stake(validator_address)
+        # استفاده از ولیدیتور انتخاب شده یا محاسبه جدید
+        if selected_validator_address:
+            validator_address = selected_validator_address
+            stake = ValidatorRegistry.get_validator_stake(validator_address)
+        else:
+            # روش قدیمی - محاسبه از کلید خصوصی
+            validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
+            stake = ValidatorRegistry.get_validator_stake(validator_address)
         
         if stake <= 0:
             logger.error(f"Validator {validator_address} has no stake or not registered in DB")
@@ -421,6 +532,3 @@ class Blockchain:
             if new_block in self.chain:
                 self.chain.remove(new_block)
             return None
-
-    def __repr__(self) -> str:
-        return f"<Blockchain length={len(self.chain)}, last_block={self.get_last_block()}>"

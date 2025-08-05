@@ -1,10 +1,8 @@
 from typing import Dict
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
-from src.blockchain.transaction import Transaction
-from src.blockchain.block import Block
 from src.utils.database import db_connection
-from src.utils.crypto import address_from_public_key
 from src.utils.logger import logger
+import time
 
 class StakeManager:
     """مدیریت سهام‌گذاری و پاداش‌ها"""
@@ -13,28 +11,39 @@ class StakeManager:
     SLASH_RATE = 0.05  # 5% penalty for malicious validators
 
     @staticmethod
-    def stake(address: str, amount: float, public_key_pem: str, private_key_pem: str):
+    def stake(address: str, amount: float, public_key_pem: str) -> str:
         """ثبت سهام برای یک ولیدیتور و ثبت کلید عمومی آن"""
-        
-        address = address_from_public_key(public_key_pem)
-        
-        with db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # ثبت یا به روز رسانی ولیدیتور با کلید عمومی در یک تراکنش
-            cursor.execute('''
-                INSERT OR REPLACE INTO validators 
-                (address, public_key_pem, stake, last_active)
-                VALUES (?, ?, ?, datetime('now'))
-            ''', (address, public_key_pem, amount))
-            
-            # سپس سهام را به روز رسانی کنید (اگر قبلاً وجود داشت)
-            cursor.execute('''
-                UPDATE validators 
-                SET stake = stake + ?, last_active = datetime('now')
-                WHERE address = ?
-            ''', (amount, address))
-            conn.commit()
+        try:
+            # استفاده از آدرس ورودی به جای محاسبه مجدد
+            with db_connection() as conn:
+                cursor = conn.cursor()
+                
+                ValidatorRegistry.register_validator(
+                    address=address,
+                    public_key_pem=public_key_pem,
+                    stake=amount
+                )
+
+            #    # ثبت یا به روز رسانی ولیدیتور
+            #    cursor.execute('''
+            #        INSERT OR REPLACE INTO validators 
+            #        (address, public_key_pem, stake, last_active)
+            #        VALUES (?, ?, ?, datetime('now'))
+            #    ''', (address, public_key_pem, amount))
+            #    
+            #    # به روز رسانی سهام
+            #    cursor.execute('''
+            #        UPDATE validators 
+            #        SET stake = stake + ?, last_active = datetime('now')
+            #        WHERE address = ?
+            #    ''', (amount, address))
+                conn.commit()
+
+            # برگرداندن هش تراکنش شبیه‌سازی شده
+            return f"stake_tx_{address}_{int(time.time())}"
+        except Exception as e:
+            logger.error(f"Staking failed: {e}")
+            return None
 
     @staticmethod
     def unstake(address: str, amount: float):
@@ -61,7 +70,7 @@ class StakeManager:
             
             # محاسبه پاداش بر اساس سهام
             validator_stake = ValidatorRegistry.get_validator_stake(block.validator)
-            total_stake = sum(ValidatorRegistry.get_active_validators().values())
+            total_stake = sum(StakeManager.get_active_validators().values())
             stake_ratio = validator_stake / total_stake if total_stake > 0 else 0
             
             final_reward = base_reward * (1 + stake_ratio)
