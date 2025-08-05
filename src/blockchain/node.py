@@ -1,7 +1,7 @@
 import os
 import time
 import threading
-from blockchain.consensus.consensus import Consensus
+from src.blockchain.consensus.consensus import Consensus
 from src.blockchain.chain import Blockchain
 from src.blockchain.mempool import Mempool
 from src.p2p.network import P2PNetwork
