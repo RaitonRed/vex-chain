@@ -45,6 +45,11 @@ class BlockchainNode:
         self.mempool.p2p_network = self.p2p_network
         self.p2p_network.set_mempool(self.mempool)
 
+        self.p2p_thread = None
+        self.api_thread = None
+        self.health_thread = None
+        self.api_server = flask_app
+        # self.api_server.config['node'] = self  # Inject node into Flask app context
         self.monitor = None
         self._services_ready = threading.Event()
         self._running = False
