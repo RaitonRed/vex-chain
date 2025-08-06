@@ -1,7 +1,7 @@
 import hashlib
 import os
 import json
-import binascii
+import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
@@ -14,7 +14,6 @@ from src.utils.logger import logger
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
-from src.utils.crypto import generate_secure_nonce
 
 class Wallet:
     def __init__(self, node):
@@ -38,7 +37,8 @@ class Wallet:
             backend=default_backend()
         )
 
-        return kdf.derive(password.encode('utf-8'))
+        raw_key = kdf.derive(password.encode('utf-8'))
+        return base64.urlsafe_b64encode(raw_key)
 
     def _get_encryption_key(self):
         """Safely get or generate encryption key"""
@@ -288,6 +288,7 @@ class Wallet:
         """Generate a new encryption key and re-encrypt all private keys"""
         # Backup old key
         old_key = self.encryption_key
+        self.encryption_key = base64.urlsafe_b64encode(os.urandom(32))
         
         # Generate new key
         self.encryption_key = Fernet.generate_key()
