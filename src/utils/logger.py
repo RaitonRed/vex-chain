@@ -22,6 +22,7 @@ def setup_logger():
             'WARNING': 'yellow',
             'ERROR': 'red',
             'CRITICAL': 'red,bg_white',
+            'EXCEPTION': 'red,bg_white'
         },
         secondary_log_colors={},
         style='%'
@@ -51,3 +52,22 @@ def setup_logger():
     return logger
 
 logger = setup_logger()
+
+
+def debug(msg, *args, **kwargs):
+    logger.debug(msg, *args, **kwargs)
+
+def info(msg, *args, **kwargs):
+    logger.info(msg, *args, **kwargs)
+
+def warning(msg, *args, **kwargs):
+    logger.warning(msg, *args, **kwargs)
+
+def error(msg, *args, **kwargs):
+    logger.error(msg, *args, **kwargs)
+
+def critical(msg, *args, **kwargs):
+    logger.critical(msg, *args, **kwargs)
+
+def exception(msg, *args, **kwargs):
+    logger.exception(msg, *args, **kwargs)
