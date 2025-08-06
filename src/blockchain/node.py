@@ -24,12 +24,22 @@ class BlockchainNode:
         self.consensus = Consensus(self.blockchain, stake_manager=StakeManager())
         self.p2p_network = P2PNetwork(host, p2p_port, self.blockchain)  # Use initialized blockchain
 
-        # Inject dependencies
-        self.mempool.inject('blockchain', self.blockchain)
-        self.wallet.inject('blockchain', self.blockchain)
-        self.consensus.inject('blockchain', self.blockchain)
-        self.p2p_network.inject('blockchain', self.blockchain)
-        self.blockchain.inject('p2p', self.p2p_network)
+        modules = {
+            'blockchain': self.blockchain,
+            'mempool': self.mempool,
+            'wallet': self.wallet,
+            'consensus': self.consensus,
+            'p2p_network': self.p2p_network
+        }
+
+        self.modules = modules
+
+        # Inject dependencies Manualy (Automatic had error)
+        self.mempool.blockchain = self.blockchain
+        self.wallet.blockchain = self.blockchain
+        self.consensus.blockchain = self.blockchain
+        self.p2p_network.blockchain = self.blockchain
+        self.blockchain.p2p_network = self.p2p_network
 
         # Additional setup
         self.mempool.p2p_network = self.p2p_network
