@@ -1,10 +1,6 @@
 import argparse
-import sys
-import time
-from dataclasses import dataclass
-from typing import Callable, Dict
 from src.cli.commands import CommandExecutor
-from src.cli.outputs import display_menu, print_error, print_success, print_info
+from src.cli.outputs import display_menu, print_error
 from src.cli.style import CLITheme
 from src.utils.logger import logging, logger
 from src.blockchain.node import BlockchainNode

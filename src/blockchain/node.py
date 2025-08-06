@@ -54,6 +54,47 @@ class BlockchainNode:
         self._services_ready = threading.Event()
         self._running = False
 
+    def _start_api_service(self):
+        try:
+            # تنظیم نمونه node در برنامه Flask
+            flask_app.config['node'] = self
+            
+            # ایجاد thread برای سرویس API
+            self.api_thread = threading.Thread(
+                target=self._run_api_service,
+                daemon=True,
+                name="API_Service"
+            )
+            self.api_thread.start()
+            logger.info("API service thread started")
+        except Exception as e:
+            logger.error(f"Failed to start API thread: {e}")
+            self.stop()
+
+    def _run_api_service(self):
+        try:
+            logger.info(f"Starting API server on {self.host}:{self.api_port}")
+            
+            # استفاده از سرور Waitress اگر نصب شده باشد
+            try:
+                from waitress import serve
+                serve(flask_app, host=self.host, port=self.api_port)
+                return
+            except ImportError:
+                logger.warning("Waitress not installed, using Flask development server")
+            
+            # استفاده از سرور توسعه‌دهی Flask
+            flask_app.run(
+                host=self.host,
+                port=self.api_port,
+                debug=False,
+                use_reloader=False,
+                threaded=True
+            )
+        except Exception as e:
+            logger.error(f"API service runtime error: {e}")
+            self.stop()
+
     def _setup_dependencies(self):
         if self.mempool and self.p2p_network:
             self.mempool.p2p_network = self.p2p_network
@@ -74,13 +115,20 @@ class BlockchainNode:
             logger.info("initializing database...")
             init_db()
 
+            # راه‌اندازی ماژول‌ها
             for name, module in self.modules.items():
                 if hasattr(module, 'initialize'):
                     logger.info(f"Initializing {name} module...")
+                    module.initialize()
+                if hasattr(module, 'start'):
+                    logger.info(f"Starting {name} module...")
                     module.start()
-            
+
+            self._start_p2p_service()
+            self._start_api_service()
+
             self._start_monitoring()
-            
+
             self._running = True
             print("🟢 Node services started successfully")
             return True

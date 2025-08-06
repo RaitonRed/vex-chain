@@ -1,33 +1,25 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, current_app
 from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
 from src.blockchain.db.repositories import BlockRepository
-from src.blockchain.mempool import Mempool
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 from src.utils.logger import logger
 
+# Create Flask app instance
 app = Flask(__name__)
-blockchain = Blockchain()
 
-# Global references
-blockchain = None
-mempool = None
-p2p_network = None
-
-def create_app(blockchain_instance, mempool_instance, network_instance):
-    global blockchain, mempool, p2p_network
-    blockchain = blockchain_instance
-    mempool = mempool_instance
-    p2p_network = network_instance
-    
-    app = Flask(__name__)
-    return app
-
-app = create_app(blockchain, mempool, p2p_network)
+# Remove global variables and create_app function
+# Instead, we'll use app context to access node
 
 @app.route('/mine', methods=['POST'])
 def mine_block_post():
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    blockchain = node.blockchain
+    mempool = node.mempool
+    p2p_network = node.p2p_network
+    
     transactions = mempool.get_transactions()
     
     if not transactions:
@@ -38,6 +30,7 @@ def mine_block_post():
         return jsonify({'error': 'Private key required'}), 401
     
     try:
+        from cryptography.hazmat.primitives import serialization
         validator_private_key = serialization.load_pem_private_key(
             private_key_pem.encode(),
             password=None,
@@ -61,10 +54,16 @@ def mine_block_post():
             }), 201
             
     except Exception as e:
-        return jsonify({'error': 'Invalid private key'}), 401
+        logger.error(f"Mining error: {str(e)}")
+        return jsonify({'error': 'Invalid private key or mining error'}), 401
 
 @app.route('/')
 def home():
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    blockchain = node.blockchain
     return jsonify({
         'status': 'running',
         'chain_length': len(blockchain.chain),
@@ -74,6 +73,11 @@ def home():
 
 @app.route('/blocks', methods=['GET'])
 def get_blocks():
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    blockchain = node.blockchain
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     
@@ -90,6 +94,11 @@ def get_blocks():
 
 @app.route('/blocks/<int:index>', methods=['GET'])
 def get_block(index: int):
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    blockchain = node.blockchain
     block = BlockRepository.get_block_by_index(index)
     if not block:
         return jsonify({'error': 'Block not found'}), 404
@@ -111,11 +120,18 @@ def get_block(index: int):
 
 @app.route('/transactions', methods=['POST'])
 def add_transaction():
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    mempool = node.mempool
+    p2p_network = node.p2p_network
     data = request.json
     if not data:
         return jsonify({'error': 'No data provided'}), 400
         
     try:
+        # ایجاد تراکنش با استفاده از تابع سازنده صحیح
         tx = Transaction(
             sender=data.get('sender'),
             recipient=data.get('recipient'),
@@ -124,8 +140,10 @@ def add_transaction():
         )
         
         # اضافه کردن تراکنش به mempool
-        mempool = Mempool()
         if mempool.add_transaction(tx):
+            # Broadcast transaction to network
+            if p2p_network:
+                p2p_network.broadcast_transaction(tx)
             return jsonify({
                 'status': 'success',
                 'tx_hash': tx.tx_hash
@@ -134,21 +152,24 @@ def add_transaction():
             return jsonify({'error': 'Failed to add transaction to mempool'}), 400
             
     except Exception as e:
+        logger.error(f"Transaction error: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    if not hasattr(app, 'node') or app.node is None:
+    node = current_app.config.get('node')
+    if not node:
         return jsonify({"status": "NOT READY"}), 503
     
-    report = app.node.monitor.get_status_report()
-    status_code = 200 if report['all_ready'] else 503
-
+    # Simple health check
+    status = "READY" if node.is_ready() else "NOT READY"
     return jsonify({
-        "status": "READY" if report['all_ready'] else "NOT READY",
-        "services": report['services'],
-        "uptime": report['uptime']
-    }), status_code
+        "status": status,
+        "services": {
+            "blockchain": node._check_blockchain(),
+            "p2p": node._check_p2p(),
+            "api": node._check_api()
+        }
+    }), 200 if status == "READY" else 503
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+# Remove if __name__ == '__main__' block
