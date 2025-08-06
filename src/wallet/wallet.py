@@ -37,9 +37,9 @@ class Wallet:
             iterations=100000,
             backend=default_backend()
         )
-    
-        return kdf.derive(password)
-    
+
+        return kdf.derive(password.encode('utf-8'))
+
     def _get_encryption_key(self):
         """Safely get or generate encryption key"""
         key_path = "data/wallet_key.key"

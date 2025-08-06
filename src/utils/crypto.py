@@ -9,7 +9,6 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
     PrivateFormat,
     NoEncryption,
-    load_pem_public_key,
 )
 from cryptography.hazmat.backends import default_backend
 from src.utils.logger import logger
@@ -38,11 +37,16 @@ def generate_key_pair():
 
 def sign_data(private_key, data: str) -> str:
     """Sign data with private key"""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+
     return private_key.sign(data)
 
 def verify_signature(public_key: str, signature: str, message: str) -> bool:
     """Verify signature with public key"""
     try:
+        if isinstance(public_key, str):
+            public_key = public_key.encode('utf-8')
         public_key.verify(signature, message)
         return True
     except Exception as e:

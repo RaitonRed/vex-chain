@@ -9,6 +9,7 @@ from src.api.api_server import app as flask_app
 from src.utils.logger import logger
 from src.wallet.wallet import Wallet
 from src.utils.database import init_db
+from src.blockchain.consensus.stake_manager import StakeManager
 
 class BlockchainNode:
     def __init__(self, host='0.0.0.0', p2p_port=6000, api_port=5000):
@@ -16,32 +17,23 @@ class BlockchainNode:
         self.p2p_port = p2p_port
         self.api_port = api_port
         
-        self.blockchain = None
-        self.p2p_network = None
-        self.mempool = None
-        self.wallet = None
-        self.consensus = None
+        # Initialize core modules first
+        self.blockchain = Blockchain()
+        self.mempool = Mempool()
+        self.wallet = Wallet(self)
+        self.consensus = Consensus(self.blockchain, stake_manager=StakeManager())
+        self.p2p_network = P2PNetwork(host, p2p_port, self.blockchain)  # Use initialized blockchain
 
-        # add default modules
-        self.modules = {
-            'blockchain': Blockchain(),
-            'p2p': P2PNetwork(host, p2p_port),
-            'mempool': Mempool(),
-            'wallet': Wallet(),
-            'consensus': Consensus()
-        }
-        
-        # Inject dependencies between modules
-        self.blockchain = self.modules['blockchain']
-        self.p2p_network = self.modules['p2p']
-        self.mempool = self.modules['mempool']
-        self.wallet = self.modules['wallet']
-        self.consensus = self.modules['consensus']
-        self.modules['p2p'].inject('blockchain', self.modules['blockchain'])
-        self.modules['blockchain'].inject('p2p', self.modules['p2p'])
-        self.modules['mempool'].inject('blockchain', self.modules['blockchain'])
-        self.modules['wallet'].inject('blockchain', self.modules['blockchain'])
-        self.modules['consensus'].inject('blockchain', self.modules['blockchain'])
+        # Inject dependencies
+        self.mempool.inject('blockchain', self.blockchain)
+        self.wallet.inject('blockchain', self.blockchain)
+        self.consensus.inject('blockchain', self.blockchain)
+        self.p2p_network.inject('blockchain', self.blockchain)
+        self.blockchain.inject('p2p', self.p2p_network)
+
+        # Additional setup
+        self.mempool.p2p_network = self.p2p_network
+        self.p2p_network.set_mempool(self.mempool)
 
         self.monitor = None
         self._services_ready = threading.Event()
