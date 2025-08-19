@@ -40,7 +40,27 @@ def sign_data(private_key, data: str) -> str:
     if isinstance(data, str):
         data = data.encode('utf-8')
 
-    return private_key.sign(data)
+    if isinstance(private_key, ec.EllipticCurvePrivateKey):
+        return private_key.sign(
+            data,
+            ec.ECDSA(hashes.SHA256())
+        )
+    elif isinstance(private_key, ed25519.Ed25519PrivateKey):
+        return private_key.sign(data)
+    elif isinstance(private_key, str):
+        # Load private key from PEM format
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(
+            binascii.unhexlify(private_key.encode('utf-8'))
+        )
+        return private_key.sign(data)
+    elif isinstance(private_key, ec.SECP256K1):
+        # Handle secp256k1 private key
+        return private_key.sign(
+            data,
+            ec.ECDSA(hashes.SHA256())
+        )
+    else:
+        raise ValueError("Unsupported private key type")
 
 def verify_signature(public_key: str, signature: str, message: str) -> bool:
     """Verify signature with public key"""

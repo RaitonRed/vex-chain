@@ -170,3 +170,17 @@ class StateDB:
             ''', (address, None, new_nonce))
             conn.commit()  # FIX: Changed cursor.commit() to conn.commit()
             return new_nonce
+
+    def reset(self):
+        """Reset state database to initial state"""
+        self.trie = HexaryTrie(db={})
+        self.cache = {}
+
+        with db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("DELETE FROM accounts WHERE address != '0x0000000000000000000000000000000000000000'")
+            cursor.execute("DELETE FROM balances")
+            cursor.execute("UPDATE accounts SET nonce = 0 WHERE address = '0x0000000000000000000000000000000000000000'")
+        
+            conn.commit()

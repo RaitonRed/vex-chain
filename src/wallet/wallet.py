@@ -72,7 +72,7 @@ class Wallet:
     def create_account(self, account_name):
         """Create new cryptographic account"""
         private_key = ec.generate_private_key(
-            ec.SECP521R1(),
+            ec.SECP256K1(),
             default_backend()
         )
         

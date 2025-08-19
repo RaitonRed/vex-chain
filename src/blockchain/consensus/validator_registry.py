@@ -69,6 +69,11 @@ class ValidatorRegistry:
         """دریافت کلید عمومی ولیدیتور از آدرس"""
         with db_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute('SELECT public_key_pem FROM accounts WHERE address = ?', (address,))
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+            
             cursor.execute('SELECT public_key_pem FROM validators WHERE address = ?', (address,))
             row = cursor.fetchone()
             return row[0] if row else None

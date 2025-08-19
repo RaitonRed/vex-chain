@@ -1,3 +1,5 @@
+import time
+from src.blockchain.block import Block
 from src.blockchain.contracts.contract_transaction import ContractTransaction
 from src.blockchain.transaction import Transaction
 from src.blockchain.consensus.stake_manager import StakeManager
@@ -143,14 +145,11 @@ class CommandExecutor:
         transactions = list(self.node.mempool.transactions.values())
         if not transactions:
             print_warning("No transactions in the mempool")
-            # برای تست، یک تراکنش ساده ایجاد کنیم
-            print_info("Creating a test transaction...")
-            self._create_test_transaction()
-            transactions = list(self.node.mempool.transactions.values())
+            return
 
         try:
             # انتخاب ولیدیتور از دیتابیس
-            selected_validator = Consensus.select_validator()
+            selected_validator = self.node.consensus.select_validator()
             
             if not selected_validator:
                 print_error("Validator selection failed")
@@ -164,29 +163,43 @@ class CommandExecutor:
                 print_error(f"Public key not found for validator: {selected_validator}")
                 return
             
-            # ایجاد کلید موقت (در پیاده‌سازی واقعی باید کلید واقعی ولیدیتور باشد)
-            # اما آدرس آن باید با selected_validator یکسان باشد
-            validator_key = ec.generate_private_key(ec.SECP256K1())
+            # تغییر اصلی: ایجاد بلاک جدید قبل از افزودن
+            last_block = self.node.blockchain.get_last_block()
             
-            # اضافه کردن بلاک با مشخص کردن ولیدیتور انتخاب شده
-            new_block = self.node.blockchain.add_block(
-                transactions, 
-                validator_key,
-                selected_validator_address=selected_validator  # پارامتر جدید
+            # ایجاد بلاک جدید
+            new_block = Block(
+                index=last_block.index + 1,
+                timestamp=int(time.time()),
+                transactions=transactions,
+                previous_hash=last_block.hash,
+                validator=selected_validator,
+                stake_amount=ValidatorRegistry.get_validator_stake(selected_validator),
+                difficulty=self.node.blockchain.difficulty
             )
             
-            if new_block:
-                print_success(f"✅ Block #{new_block.index} mined successfully!")
-                print_info(f"   Validator: {new_block.validator}")
-                print_info(f"   Transactions: {len(new_block.transactions)}")
-                print_info(f"   Hash: {new_block.hash[:16]}...")
+            # امضای بلاک با کلید خصوصی
+            private_key = ec.generate_private_key(ec.SECP256K1())  # در واقعیت باید کلید واقعی باشد
+            new_block.sign_block(private_key, new_block.stake_amount)
+            
+            # تغییر اصلی: فراخوانی صحیح add_block
+            added_block = self.node.blockchain.add_block(
+                block=new_block,  # پارامتر block اضافه شد
+                external_block=None,
+                selected_validator_address=selected_validator
+            )
+            
+            if added_block:
+                print_success(f"✅ Block #{added_block.index} mined successfully!")
+                print_info(f"   Validator: {added_block.validator}")
+                print_info(f"   Transactions: {len(added_block.transactions)}")
+                print_info(f"   Hash: {added_block.hash[:16]}...")
                 
                 # Remove mined transactions from mempool
                 tx_hashes = [tx.tx_hash for tx in transactions]
                 self.node.mempool.remove_transactions(tx_hashes)
                 
                 # Distribute rewards
-                StakeManager.distribute_rewards(new_block)
+                StakeManager.distribute_rewards(added_block)
                 print_info(f"   Rewards distributed to validator")
             else:
                 print_error("Block mining failed")

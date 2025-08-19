@@ -169,8 +169,11 @@ class Blockchain:
                 recipient="0x0000000000000000000000000000000000000001",
                 amount=1000000,  # Initial supply
                 data={"type": "genesis", "message": "Initial block of the chain"},
-                nonce=0  # Explicitly set nonce to 0
+                nonce=0,  # Explicitly set nonce to 0
+                timestamp=0
             )
+
+            genesis_tx.tx_hash = genesis_tx.calculate_hash()
             
             # Create genesis block
             genesis_block = Block(
@@ -276,17 +279,16 @@ class Blockchain:
             return self._add_external_block(external_block)
         
         # حالت 2: ایجاد بلاک جدید محلی
-        new_block = self._create_new_block(
-            transactions, 
-            validator_private_key, 
-            selected_validator_address
-        )
-        if new_block:
-            if hasattr(self, 'p2p_network') and self.p2p_network:
-                self.p2p_network.broadcast_block(new_block)
+        if transactions and validator_private_key:
+            return self._create_new_block(
+                transactions,
+                validator_private_key,
+                selected_validator_address
+            )
+        
+        logger.error("Invalid parameters for add_block")
+        return None
 
-        return new_block
-            
     def _add_external_block(self, block: Block) -> Optional[Block]:
         """اضافه کردن بلاک دریافتی از شبکه"""
         last_block = self.get_last_block()

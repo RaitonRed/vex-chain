@@ -9,10 +9,8 @@ class Consensus:
         self.blockchain = blockchain
         self.stake_manager = stake_manager
 
-    @staticmethod
     def select_validator(self):
         """انتخاب ولیدیتور از بین ولیدیتورهای فعال"""
-        
         validators = self.stake_manager.get_active_validators()
         
         if not validators:
