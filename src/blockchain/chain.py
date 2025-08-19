@@ -265,29 +265,67 @@ class Blockchain:
         - در غیر این صورت، بلاک محلی ایجاد می‌شود
         """
 
-        if not block.is_valid(self.last_block):
-            logger.error(f"Invalid block structure: {block.hash}")
+        if external_block:
+            block_to_add = external_block
+        else:
+            block_to_add = block
+
+        last_block = self.get_last_block()
+        if not last_block:
+            logger.error("Cannot add block: no last block found.")
+            return None
+        
+        if not block_to_add.is_valid(last_block):
+            logger.error(f"Invalid block structure: {block_to_add.hash}")
             return None
 
-        block_id = BlockRepository.save_block(block)
+        if not block_to_add.verify_signature():
+            logger.error(f"Invalid signature for block: {block_to_add.hash}")
 
-        self.last_block = block  # Update last block in cache
-        self.block_cache.put(block.index, block)  # Cache the new block
-
-        # حالت 1: بلاک از شبکه دریافت شده است
-        if external_block:
-            return self._add_external_block(external_block)
+        for tx in block_to_add.transactions:
+            if not tx.is_valid():
+                logger.error(f"Invalid transaction in block: {tx.tx_hash}")
+                return None
+            
+        vm = SmartContractVM(StateDB())
+        for tx in block_to_add.transactions:
+            if tx.contract_type != "NORMAL":
+                seccess, result = vm.execute(
+                    tx,
+                    block_to_add.index,
+                    block_to_add.timestamp
+                )
+                if not seccess:
+                    logger.error(f"Contract execution failed: {result}. Rejecting Block!")
+                    return None
+                tx.contract_output = result
         
-        # حالت 2: ایجاد بلاک جدید محلی
-        if transactions and validator_private_key:
-            return self._create_new_block(
-                transactions,
-                validator_private_key,
-                selected_validator_address
-            )
-        
-        logger.error("Invalid parameters for add_block")
-        return None
+        try:
+            block_id = BlockRepository.save_block(block_to_add)
+            TransactionRepository.save_transactions_bulk(block_to_add.transactions, block_id)
+            
+            # Update in-memory chain and cache
+            self.chain.append(block_to_add)
+            self.last_block = block_to_add
+            self.block_cache.put(block_to_add.index, block_to_add)
+            
+            logger.info(f"Block #{block_to_add.index} added: {block_to_add.hash[:10]}...")
+            
+            # Broadcast the block if it's a local block
+            if not external_block and hasattr(self, 'p2p_network') and self.p2p_network:
+                try:
+                    self.p2p_network.broadcast_block(block_to_add)
+                except Exception as e:
+                    logger.error(f"Block broadcast failed: {e}")
+                    self._save_pending_block(block_to_add)
+            
+            return block_to_add
+        except Exception as e:
+            logger.error(f"Failed to save block: {e}")
+            # Clean up if save failed
+            if block_to_add in self.chain:
+                self.chain.remove(block_to_add)
+            return None
 
     def _add_external_block(self, block: Block) -> Optional[Block]:
         """اضافه کردن بلاک دریافتی از شبکه"""

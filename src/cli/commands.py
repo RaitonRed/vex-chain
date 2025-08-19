@@ -157,6 +157,18 @@ class CommandExecutor:
                 
             print_info(f"Selected validator: {selected_validator}")
             
+            validator_account = self.node.wallet.get_account(selected_validator)
+            if not validator_account or not validator_account.get('private_key'):
+                print_error(f"Private Key not found for validator: {selected_validator}")
+                return
+
+            private_key_pem = validator_account['private_key']
+            from cryptography.hazmat.primitives.serialization import load_pem_private_key
+            private_key = load_pem_private_key(
+                private_key_pem.encode('utf-8'),
+                password=None
+            )
+
             # دریافت کلید عمومی ولیدیتور انتخاب شده از دیتابیس
             public_key_pem = ValidatorRegistry.get_public_key_pem(selected_validator)
             if not public_key_pem:
@@ -178,7 +190,6 @@ class CommandExecutor:
             )
             
             # امضای بلاک با کلید خصوصی
-            private_key = ec.generate_private_key(ec.SECP256K1())  # در واقعیت باید کلید واقعی باشد
             new_block.sign_block(private_key, new_block.stake_amount)
             
             # تغییر اصلی: فراخوانی صحیح add_block
