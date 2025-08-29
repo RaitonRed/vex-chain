@@ -1,3 +1,5 @@
+# Deprecated
+
 import time
 import json
 from tabulate import tabulate

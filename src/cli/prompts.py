@@ -1,3 +1,5 @@
+# Deprecated
+
 import json
 from src.cli.style import CLITheme
 

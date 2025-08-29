@@ -1,3 +1,5 @@
+# Deprecated
+
 import time
 import random
 from src.blockchain.block import Block

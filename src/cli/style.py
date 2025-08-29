@@ -1,3 +1,5 @@
+# Deprecated
+
 class CLITheme:
     """ANSI color codes for CLI styling"""
     def __init__(self):

@@ -1,3 +1,5 @@
+# Deprecated
+
 from dataclasses import dataclass
 from typing import Callable
 from src.cli.commands import CommandExecutor
