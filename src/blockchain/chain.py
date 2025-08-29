@@ -501,6 +501,15 @@ class Blockchain:
                  validator_private_key: ec.EllipticCurvePrivateKey,
                  selected_validator_address: str = None) -> Optional[Block]:
         """ایجاد و افزودن بلاک جدید محلی"""
+
+        # Get Our Node's Address
+        our_address = ValidatorRegistry.get_validator_address(validator_private_key)
+
+        # Only proceed if we are the selected validator
+        if our_address != selected_validator_address:
+            logger.error(f"Not the selected validator. Expected: {selected_validator_address}, Our: {our_address}")
+            return None
+
         if not transactions:
             logger.warning("Cannot add empty block")
             return None

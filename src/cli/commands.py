@@ -1,4 +1,5 @@
 import time
+import random
 from src.blockchain.block import Block
 from src.blockchain.contracts.contract_transaction import ContractTransaction
 from src.blockchain.transaction import Transaction
@@ -74,23 +75,24 @@ class CommandExecutor:
                 return
                 
             print("Available accounts:")
-            for i, (addr, acc) in enumerate(accounts.items(), 1):
-                print(f"{i}. {addr} ({acc.get('name', 'No name')})")
+            for i, (name, acc) in enumerate(accounts.items(), 1):
+                print(f"{i}. {name} ({acc['address'][:12]}...)")
                 
             choice = input("Select account: ")
             if not choice.isdigit() or int(choice) > len(accounts):
                 print("❌ Invalid selection")
                 return
                 
-            address = list(accounts.keys())[int(choice)-1]
-            account = accounts[address]
+            account_name = list(accounts.keys())[int(choice)-1]
+            account = accounts[account_name]
             
             # Get staking amount
             amount = float(input("Amount to stake: "))
             
             # Get private key and public key
             private_key = account.get('private_key')
-            public_key = account.get('public_key')  # دریافت کلید عمومی
+            public_key = account.get('public_key')
+            address = account.get('address')
             
             if not private_key or not public_key:
                 print("❌ Private key or public key not available for this account")
@@ -105,6 +107,7 @@ class CommandExecutor:
             
             if tx_hash:
                 print(f"✅ Staked {amount} coins. TX Hash: {tx_hash[:10]}...")
+                print(f"   Validator address: {address}")
             else:
                 print("❌ Staking failed")
         except Exception as e:
@@ -130,17 +133,28 @@ class CommandExecutor:
         display_validators(validators)
 
     def mine_block(self):
-        """Manual block mining با انتخاب ولیدیتور واقعی از دیتابیس"""
+        """Manual block mining - Only mine if we are the selected validator"""
         if not self.node.blockchain.chain:
             print_error("Blockchain is not initialized")
             return
 
-        validators = ValidatorRegistry.get_active_validators()
-        if not validators:
-            print_error("No active validators found")
-            print_info("Creating a test validator...")
-            self._create_test_validator()
-            validators = ValidatorRegistry.get_active_validators()
+        # Get validators from our wallet that have stake
+        my_validators = self._get_validators_in_wallet()
+        for account_name, account in self.node.wallet.accounts.items():
+            address = account.get('address')
+            stake = ValidatorRegistry.get_validator_stake(address) if address else 0
+            if stake > 0:
+                my_validators.append({
+                    'address': address,
+                    'stake': stake,
+                    'private_key': account.get('private_key'),
+                    'name': account_name
+                })
+        
+        if not my_validators:
+            print_error("No validators found in your wallet with stake")
+            print_info("Please stake coins with one of your accounts first")
+            return
 
         transactions = list(self.node.mempool.transactions.values())
         if not transactions:
@@ -148,55 +162,61 @@ class CommandExecutor:
             return
 
         try:
-            # انتخاب ولیدیتور از دیتابیس
-            selected_validator = self.node.consensus.select_validator()
-            
+            # Select a validator from our wallet (weighted by stake)
+            total_stake = sum(v['stake'] for v in my_validators)
+            if total_stake <= 0:
+                print_error("Total stake is zero or negative")
+                return
+
+            selection_point = random.uniform(0, total_stake)
+            current_sum = 0
+            selected_validator = None
+
+            for validator in my_validators:
+                current_sum += validator['stake']
+                if current_sum >= selection_point:
+                    selected_validator = validator
+                    break
+
             if not selected_validator:
                 print_error("Validator selection failed")
                 return
                 
-            print_info(f"Selected validator: {selected_validator}")
+            print_info(f"Selected validator: {selected_validator['name']} ({selected_validator['address'][:10]}...)")
             
-            validator_account = self.node.wallet.get_account(selected_validator)
-            if not validator_account or not validator_account.get('private_key'):
-                print_error(f"Private Key not found for validator: {selected_validator}")
+            # Load private key
+            private_key_pem = selected_validator['private_key']
+            if not private_key_pem:
+                print_error(f"Private Key not found for validator: {selected_validator['address']}")
                 return
 
-            private_key_pem = validator_account['private_key']
             from cryptography.hazmat.primitives.serialization import load_pem_private_key
             private_key = load_pem_private_key(
                 private_key_pem.encode('utf-8'),
                 password=None
             )
 
-            # دریافت کلید عمومی ولیدیتور انتخاب شده از دیتابیس
-            public_key_pem = ValidatorRegistry.get_public_key_pem(selected_validator)
-            if not public_key_pem:
-                print_error(f"Public key not found for validator: {selected_validator}")
-                return
-            
-            # تغییر اصلی: ایجاد بلاک جدید قبل از افزودن
+            # Create new block
             last_block = self.node.blockchain.get_last_block()
             
-            # ایجاد بلاک جدید
             new_block = Block(
                 index=last_block.index + 1,
                 timestamp=int(time.time()),
                 transactions=transactions,
                 previous_hash=last_block.hash,
-                validator=selected_validator,
-                stake_amount=ValidatorRegistry.get_validator_stake(selected_validator),
+                validator=selected_validator['address'],
+                stake_amount=selected_validator['stake'],
                 difficulty=self.node.blockchain.difficulty
             )
             
-            # امضای بلاک با کلید خصوصی
+            # Sign the block
             new_block.sign_block(private_key, new_block.stake_amount)
             
-            # تغییر اصلی: فراخوانی صحیح add_block
+            # Add block to blockchain
             added_block = self.node.blockchain.add_block(
-                block=new_block,  # پارامتر block اضافه شد
+                block=new_block,
                 external_block=None,
-                selected_validator_address=selected_validator
+                selected_validator_address=selected_validator['address']
             )
             
             if added_block:
@@ -219,6 +239,10 @@ class CommandExecutor:
             print_error(f"Mining error: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def _is_address_in_wallet(self, address):
+        """Check if an address exists in our wallet"""
+        return any(acc['address'] == address for acc in self.node.wallet.accounts.values())
 
     def deploy_contract(self):
         """Handle contract deployment"""
@@ -535,6 +559,21 @@ class CommandExecutor:
         except Exception as e:
             print_error(f"Failed to create test transaction: {e}")
 
+    def _get_validators_in_wallet(self):
+        """Get all validators that are in our wallet and have stake"""
+        validators = []
+        for account_name, account in self.node.wallet.accounts.items():
+            address = account.get('address')
+            if address:
+                stake = ValidatorRegistry.get_validator_stake(address)
+                if stake > 0:
+                    validators.append({
+                        'address': address,
+                        'stake': stake,
+                        'private_key': account.get('private_key'),
+                        'name': account_name
+                    })
+        return validators
 
     def exit_node(self):
         """Handle node shutdown"""
