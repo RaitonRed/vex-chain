@@ -31,8 +31,14 @@ class Block:
 
     def sign_block(self, private_key: ec.EllipticCurvePrivateKey, stake: float):
         """Sign the block with the validator's private key"""
-        self.validator = ValidatorRegistry.get_validator_address(private_key)
-        self.stake_amount = stake
+        # self.validator = ValidatorRegistry.get_validator_address(private_key)
+        # self.stake_amount = stake
+        # signature = private_key.sign(
+        #     self.hash.encode(),
+        #     ec.ECDSA(hashes.SHA256())
+        # )
+        # self.signature = binascii.hexlify(signature).decode()
+
         signature = private_key.sign(
             self.hash.encode(),
             ec.ECDSA(hashes.SHA256())
