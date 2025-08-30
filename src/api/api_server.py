@@ -6,6 +6,7 @@ from src.blockchain.db.repositories import BlockRepository
 from src.utils.logger import logger
 from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
+from src.blockchain.db.state_db import StateDB
 from src.blockchain.contracts.contract_manager import ContractManager
 from src.blockchain.contracts.contract_transaction import ContractTransaction
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -211,42 +212,37 @@ def stake_coins():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    account_name = data.get('account_name')
-    amount = data.get('amount')
-
-    if not all([account_name, amount]):
-        return jsonify({'error': 'Missing account_name or amount'}), 400
+    # دریافت تراکنش استیک از کاربر (امضا شده)
+    tx_data = data.get('transaction')
+    if not tx_data:
+        return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        accounts = node.wallet.accounts
-        if not accounts:
-            return jsonify({'error': 'No accounts available'}), 400
-
-        if account_name not in accounts:
-            return jsonify({'error': 'Invalid account name'}), 400
-
-        account = accounts[account_name]
-        private_key = account.get('private_key')
-        public_key = account.get('public_key')
-        address = account.get('address')
-
-        if not private_key or not public_key:
-            return jsonify({'error': 'Private key or public key not available for this account'}), 400
-
-        tx_hash = StakeManager.stake(
-            address=address,
-            amount=amount,
-            public_key_pem=public_key,
+        # ایجاد تراکنش از داده‌های دریافتی
+        tx = Transaction(
+            sender=tx_data.get('sender'),
+            recipient=tx_data.get('recipient'),  # قرارداد استیک یا آدرس خاص
+            amount=tx_data.get('amount'),
+            data=tx_data.get('data', {}),
+            signature=tx_data.get('signature'),
+            nonce=tx_data.get('nonce')
         )
 
-        if tx_hash:
+        # بررسی اعتبار تراکنش
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
+
+        # اضافه کردن تراکنش به mempool
+        if node.mempool.add_transaction(tx):
+            if node.p2p_network:
+                node.p2p_network.broadcast_transaction(tx)
             return jsonify({
                 'status': 'success',
-                'tx_hash': tx_hash,
-                'validator_address': address
+                'tx_hash': tx.tx_hash
             }), 201
         else:
-            return jsonify({'error': 'Staking failed'}), 400
+            return jsonify({'error': 'Failed to add staking transaction'}), 400
+
     except Exception as e:
         return jsonify({'error': f'Staking failed: {str(e)}'}), 500
 
@@ -260,19 +256,99 @@ def unstake_coins():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    address = data.get('address')
-    amount = data.get('amount')
-
-    if not all([address, amount]):
-        return jsonify({'error': 'Missing address or amount'}), 400
+    # دریافت تراکنش unstake از کاربر (امضا شده)
+    tx_data = data.get('transaction')
+    if not tx_data:
+        return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        if StakeManager.unstake(address, amount):
-            return jsonify({'status': 'success', 'message': f'Successfully unstaked {amount} coins'}), 200
+        # ایجاد تراکنش از داده‌های دریافتی
+        tx = Transaction(
+            sender=tx_data.get('sender'),
+            recipient=tx_data.get('recipient'),  # معمولاً آدرس قرارداد unstake یا آدرس خاص
+            amount=tx_data.get('amount'),
+            data={
+                'type': 'unstake',
+                'amount': tx_data.get('amount'),
+                **tx_data.get('data', {})
+            },
+            signature=tx_data.get('signature'),
+            nonce=tx_data.get('nonce')
+        )
+
+        # بررسی اعتبار تراکنش
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
+
+        # اعتبارسنجی اضافی برای تراکنش unstake
+        if tx.data.get('type') != 'unstake':
+            return jsonify({'error': 'Transaction is not an unstake operation'}), 400
+
+        # بررسی موجودی سهام
+        stake_amount = StakeManager.get_stake_amount(tx.sender)
+        if stake_amount < tx.amount:
+            return jsonify({'error': f'Insufficient stake balance: {stake_amount}'}), 400
+
+        # اضافه کردن تراکنش به mempool
+        if node.mempool.add_transaction(tx):
+            if node.p2p_network:
+                node.p2p_network.broadcast_transaction(tx)
+            return jsonify({
+                'status': 'success',
+                'tx_hash': tx.tx_hash,
+                'message': f'Unstake transaction submitted. {tx.amount} coins will be unstaked.'
+            }), 200
         else:
-            return jsonify({'error': 'Unstaking failed (insufficient stake?)'}), 400
+            return jsonify({'error': 'Failed to add unstake transaction to mempool'}), 400
+
     except Exception as e:
-        return jsonify({'error': f'Unstaking failed: {str(e)}'}), 500
+        logger.error(f"Unstake error: {str(e)}")
+        return jsonify({'error': f'Unstake failed: {str(e)}'}), 500
+    
+@app.route('/stake/<address>', methods=['GET'])
+def get_stake_info(address):
+    node = current_app.config.get('node')
+
+    if not node:
+        return jsonify(
+            {
+                'error': 'Node Not initialized'
+            }
+        ), 500
+    
+    try:
+        stake_amount = StakeManager.get_stake_amount(address)
+        is_validator = ValidatorRegistry.is_validator(address)
+        validator_info = ValidatorRegistry.get_validator_info(address) if is_validator else None
+        
+        return jsonify({
+            'status': 'success',
+            'address': address,
+            'stake_amount': stake_amount,
+            'is_validator': is_validator,
+            'validator_info': validator_info
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get stake info: {str(e)}'}), 500  
+    
+@app.route('/stake/<address>/transactions', methods=['GET'])
+def get_stake_transactions(address):
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        staking_txs = StakeManager.get_staking_transactions(address)
+        unstaking_txs = StakeManager.get_unstaking_transactions(address)
+        
+        return jsonify({
+            'status': 'success',
+            'address': address,
+            'staking_transactions': staking_txs,
+            'unstaking_transactions': unstaking_txs
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get stake transactions: {str(e)}'}), 500
 
 @app.route('/validators', methods=['GET'])
 def get_validators():
@@ -288,73 +364,50 @@ def mine_block_post():
     if not node.blockchain.chain:
         return jsonify({'error': 'Blockchain is not initialized'}), 400
 
-    try:
-        accounts = node.wallet.accounts
-        my_validators = []
-        for account_name, account in accounts.items():
-            address = account.get('address')
-            stake = ValidatorRegistry.get_validator_stake(address) if address else 0
-            if stake > 0:
-                my_validators.append({
-                    'address': address,
-                    'stake': stake,
-                    'private_key': account.get('private_key'),
-                    'name': account_name
-                })
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
 
-        if not my_validators:
-            return jsonify({'error': 'No validators found in your wallet with stake'}), 400
+    # دریافت کلید خصوصی از کاربر
+    private_key_pem = data.get('private_key')
+    if not private_key_pem:
+        return jsonify({'error': 'Private key is required for mining'}), 400
+
+    try:
+        validator_private_key = load_pem_private_key(
+            private_key_pem.encode(),
+            password=None,
+        )
+
+        validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
+        
+        stake = ValidatorRegistry.get_validator_stake(validator_address)
+        if stake <= 0:
+            return jsonify({'error': 'Validator has no stake or not registered'}), 400
 
         transactions = list(node.mempool.transactions.values())
         if not transactions:
             return jsonify({'error': 'No transactions in the mempool'}), 400
 
-        total_stake = sum(v['stake'] for v in my_validators)
-        if total_stake <= 0:
-            return jsonify({'error': 'Total stake is zero or negative'}), 400
+        new_block = node.blockchain._create_new_block(
+            transactions, 
+            validator_private_key, 
+            validator_address
+        )
 
-        selection_point = random.uniform(0, total_stake)
-        current_sum = 0
-        selected_validator = None
-
-        for validator in my_validators:
-            current_sum += validator['stake']
-            if current_sum >= selection_point:
-                selected_validator = validator
-                break
-
-        if not selected_validator:
-            return jsonify({'error': 'Validator selection failed'}), 400
-
-        private_key_pem = selected_validator['private_key']
-        if not private_key_pem:
-            return jsonify({'error': f'Private Key not found for validator: {selected_validator["address"]}'}), 400
-
-        try:
-            validator_private_key = load_pem_private_key(
-                private_key_pem.encode(),
-                password=None,
-            )
-
-            new_block = node.blockchain.add_block(transactions, validator_private_key, selected_validator['address'])
-
-            if new_block:
-                node.p2p_network.broadcast_block(new_block)
-                node.mempool.remove_transactions([tx.tx_hash for tx in transactions])
-                return jsonify({
-                    'status': 'success',
-                    'block': {
-                        'index': new_block.index,
-                        'hash': new_block.hash,
-                        'validator': selected_validator['address']
-                    }
-                }), 201
-            else:
-                return jsonify({'error': 'Failed to create new block'}), 400
-
-        except Exception as e:
-            logger.error(f"Mining error: {str(e)}")
-            return jsonify({'error': 'Invalid private key or mining error'}), 401
+        if new_block:
+            node.p2p_network.broadcast_block(new_block)
+            node.mempool.remove_transactions([tx.tx_hash for tx in transactions])
+            return jsonify({
+                'status': 'success',
+                'block': {
+                    'index': new_block.index,
+                    'hash': new_block.hash,
+                    'validator': validator_address
+                }
+            }), 201
+        else:
+            return jsonify({'error': 'Failed to create new block'}), 400
 
     except Exception as e:
         logger.error(f"Mining error: {str(e)}")
@@ -375,16 +428,14 @@ def add_transaction():
             sender=data.get('sender'),
             recipient=data.get('recipient'),
             amount=data.get('amount'),
-            data=data.get('data', {})
+            data=data.get('data', {}),
+            signature=data.get('signature'),
+            nonce=data.get('nonce')
         )
         
-        private_key_pem = data.get('private_key_pem')
-        if private_key_pem:
-            private_key = load_pem_private_key(
-                private_key_pem.encode(),
-                password=None,
-            )
-            tx.sign(private_key)
+        # بررسی اعتبار تراکنش
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
         
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
@@ -399,7 +450,7 @@ def add_transaction():
     except Exception as e:
         logger.error(f"Transaction error: {str(e)}")
         return jsonify({'error': str(e)}), 400
-
+    
 @app.route('/contracts/deploy', methods=['POST'])
 def deploy_contract():
     node = current_app.config.get('node')
@@ -432,31 +483,28 @@ def call_contract():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    sender = data.get('sender')
-    contract_address = data.get('contract_address')
-    method = data.get('method')
-    args = data.get('args', {})
-    amount = data.get('amount', 0)
-    private_key_pem = data.get('private_key_pem')
-
-    if not all([sender, contract_address, method, private_key_pem]):
-        return jsonify({'error': 'Missing required fields'}), 400
+    # دریافت تراکنش از پیش امضا شده
+    tx_data = data.get('transaction')
+    if not tx_data:
+        return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        private_key = load_pem_private_key(
-            private_key_pem.encode(),
-            password=None,
+        # ایجاد تراکنش از داده‌های دریافتی
+        tx = ContractTransaction(
+            sender=tx_data.get('sender'),
+            recipient=tx_data.get('recipient'),
+            amount=tx_data.get('amount', 0),
+            data=tx_data.get('data', {}),
+            contract_address=tx_data.get('contract_address'),
+            method=tx_data.get('method'),
+            args=tx_data.get('args', {}),
+            signature=tx_data.get('signature'),
+            nonce=tx_data.get('nonce')
         )
 
-        tx = ContractTransaction(
-            sender=sender,
-            recipient=contract_address,
-            amount=amount,
-            data={},
-            contract_address=contract_address,
-            method=method,
-            args=args
-        ).sign(private_key)
+        # بررسی اعتبار تراکنش
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
 
         if node.mempool.add_transaction(tx):
             return jsonify({'status': 'success', 'tx_hash': tx.tx_hash}), 201
@@ -488,20 +536,141 @@ def clear_mempool():
 @app.route('/accounts/create', methods=['POST'])
 def create_account():
     node = current_app.config.get('node')
+
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+    
+    data = request.json
+    account_name = data.get('account_name')
+    password = data.get('password')
+
+    if not account_name or not password:
+        return jsonify({'error': 'Missing account_name or password'}), 400
+    
+    try:
+        address, private_key = node.wallet.create_account(account_name, password)
+        return jsonify({
+            'status': 'success', 
+            'address': address,
+            'private_key': private_key
+        }), 201
+    except Exception as e:
+        return jsonify({'error': f'Failed to create account: {str(e)}'}), 500
+    
+@app.route('/accounts/import', methods=['POST'])
+def import_account():
+    node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
 
     data = request.json
     account_name = data.get('account_name')
+    private_key = data.get('private_key')
+    password = data.get('password')
 
-    if not account_name:
-        return jsonify({'error': 'Missing account_name'}), 400
+    if not all([account_name, private_key, password]):
+        return jsonify({'error': 'Missing account_name, private_key or password'}), 400
 
     try:
-        address = node.wallet.create_account(account_name)
-        return jsonify({'status': 'success', 'address': address}), 201
+        address = node.wallet.import_private_key(account_name, private_key, password)
+        return jsonify({
+            'status': 'success', 
+            'address': address,
+            'message': 'Account imported successfully'
+        }), 201
     except Exception as e:
-        return jsonify({'error': f'Failed to create account: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to import account: {str(e)}'}), 500
+
+@app.route('/accounts/<address>/nonce', methods=['GET'])
+def get_account_nonce(address):
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        nonce = StateDB().get_nonce(address)
+        return jsonify({
+            'status': 'success',
+            'address': address,
+            'nonce': nonce
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get nonce: {str(e)}'}), 500
+    
+@app.route('/accounts/<address>', methods=['GET'])
+def get_account_info(address):
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        balance = StateDB().get_balance(address)
+        nonce = StateDB().get_nonce(address)
+        stake_amount = StakeManager.get_stake_amount(address)
+        is_validator = ValidatorRegistry.is_validator(address)
+        
+        return jsonify({
+            'status': 'success',
+            'address': address,
+            'balance': balance,
+            'nonce': nonce,
+            'stake_amount': stake_amount,
+            'is_validator': is_validator
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get account info: {str(e)}'}), 500
+
+@app.route('/accounts', methods=['GET'])
+def get_accounts():
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        accounts = []
+        for name, acc in node.wallet.accounts.items():
+            address = acc.get('address')
+            balance = StateDB().get_balance(address) if address else 0
+            accounts.append({
+                'name': name,
+                'address': address,
+                'balance': balance
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'accounts': accounts
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get accounts: {str(e)}'}), 500
+    
+# Check later
+# @app.route('/accounts/export/<account_name>', methods=['POST'])
+# def export_account(account_name):
+#     node = current_app.config.get('node')
+#     if not node:
+#         return jsonify({'error': 'Node not initialized'}), 500
+#
+#     data = request.json
+#     if not data:
+#         return jsonify({'error': 'No data provided'}), 400
+#
+#     password = data.get('password')
+#     if not password:
+#        return jsonify({'error': 'Password is required'}), 400
+#
+#     try:
+#         private_key = node.wallet.export_private_key(account_name, password)
+#         if private_key:
+#             return jsonify({
+#                 'status': 'success',
+#                 'account_name': account_name,
+#                 'private_key': private_key
+#             }), 200
+#         else:
+#            return jsonify({'error': 'Failed to export private key'}), 400
+#     except Exception as e:
+#         return jsonify({'error': f'Failed to export account: {str(e)}'}), 500
 
 @app.route('/settings/mempool_limit', methods=['POST'])
 def set_mempool_limit():
@@ -578,27 +747,46 @@ def create_test_transaction():
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
 
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # دریافت تراکنش از پیش امضا شده
+    tx_data = data.get('transaction')
+    if not tx_data:
+        return jsonify({'error': 'No transaction provided'}), 400
+
     try:
-        test_tx = Transaction(
-            sender="0x1234567890123456789012345678901234567890",
-            recipient="0x0987654321098765432109876543210987654321",
-            amount=10.0,
-            data={"type": "test", "message": "Test transaction for mining"}
+        # ایجاد تراکنش از داده‌های دریافتی
+        tx = Transaction(
+            sender=tx_data.get('sender'),
+            recipient=tx_data.get('recipient'),
+            amount=tx_data.get('amount'),
+            data=tx_data.get('data', {}),
+            signature=tx_data.get('signature'),
+            nonce=tx_data.get('nonce')
         )
-        
-        node.mempool.add_transaction(test_tx)
-        return jsonify({'status': 'success', 'tx_hash': test_tx.tx_hash}), 201
+
+        # بررسی اعتبار تراکنش
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
+
+        if node.mempool.add_transaction(tx):
+            return jsonify({'status': 'success', 'tx_hash': tx.tx_hash}), 201
+        else:
+            return jsonify({'error': 'Failed to add transaction to mempool'}), 400
     except Exception as e:
         return jsonify({'error': f'Failed to create test transaction: {str(e)}'}), 500
 
-@app.route('/shutdown', methods=['POST'])
-def shutdown_node():
-    node = current_app.config.get('node')
-    if not node:
-        return jsonify({'error': 'Node not initialized'}), 500
-
-    try:
-        node.stop()
-        return jsonify({'status': 'success', 'message': 'Node shutting down'}), 200
-    except Exception as e:
-        return jsonify({'error': f'Failed to shutdown node: {str(e)}'}), 500
+# Security Issue
+# @app.route('/shutdown', methods=['POST'])
+# def shutdown_node():
+#    node = current_app.config.get('node')
+#    if not node:
+#        return jsonify({'error': 'Node not initialized'}), 500
+#
+#    try:
+#        node.stop()
+#        return jsonify({'status': 'success', 'message': 'Node shutting down'}), 200
+#    except Exception as e:
+#        return jsonify({'error': f'Failed to shutdown node: {str(e)}'}), 500
