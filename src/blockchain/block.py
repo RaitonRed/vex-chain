@@ -15,13 +15,18 @@ class Block:
     timestamp: float
     transactions: List['Transaction']
     previous_hash: str
-    validator: str = ""  # Address of the validator
     signature: str = ""  # Digital signature of the block
     stake_amount: float = 0  # Stake amount used for validation
     difficulty: int = 4 
     nonce: int = 0
     hash: str = field(init=False)  # Will be set by calculate_hash
     transactions_hash: str = field(init=False)  # Hash of transactions
+
+    # Consensus data
+    miner: str = ""
+    validator: str = ""  # Address of the validator
+    signatures: List[str] = field(default_factory=list) 
+    pow_nonce: int = 0
 
     def __post_init__(self):
         """Initialize block and calculate hashes"""
@@ -79,12 +84,14 @@ class Block:
         return hashlib.sha256(''.join(tx_hashes).encode()).hexdigest()
 
     def calculate_hash(self) -> str:
-        """Calculate the block hash including PoS fields"""
+        """محاسبه هش بلوک با درنظرگیری هر دو مکانیزم"""
         block_data = {
             'index': self.index,
             'timestamp': int(self.timestamp),
             'transactions_hash': self.transactions_hash,
             'previous_hash': self.previous_hash,
+            'miner': self.miner,
+            'pow_nonce': self.pow_nonce,
             'validator': self.validator,
             'stake_amount': self.stake_amount
         }
