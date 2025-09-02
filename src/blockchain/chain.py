@@ -287,18 +287,24 @@ class Blockchain:
                 logger.error(f"Invalid transaction in block: {tx.tx_hash}")
                 return None
             
+        state_db = StateDB()
         vm = SmartContractVM(StateDB())
         for tx in block_to_add.transactions:
-            if tx.contract_type != "NORMAL":
-                seccess, result = vm.execute(
-                    tx,
-                    block_to_add.index,
-                    block_to_add.timestamp
-                )
-                if not seccess:
-                    logger.error(f"Contract execution failed: {result}. Rejecting Block!")
+            if tx.contract_type == "NORMAL":
+                # Deduct amount + fee from sender
+                sender_balance = state_db.get_balance(tx.sender)
+                total_deduct = tx.amount + getattr(tx, 'fee', 0)
+                if sender_balance < total_deduct:
+                    logger.error(f"Insufficient balance for {tx.sender}")
                     return None
-                tx.contract_output = result
+                state_db.update_balance(tx.sender, sender_balance - total_deduct)
+                
+                # Add amount to recipient
+                recipient_balance = state_db.get_balance(tx.recipient)
+                state_db.update_balance(tx.recipient, recipient_balance + tx.amount)
+                
+                # Increment sender's nonce
+                state_db.increment_nonce(tx.sender)
         
         try:
             block_id = BlockRepository.save_block(block_to_add)

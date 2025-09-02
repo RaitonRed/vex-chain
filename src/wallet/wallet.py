@@ -270,3 +270,6 @@ class Wallet:
                 VALUES (?, ?)
             ''', (address, public_pem))
             conn.commit()
+
+    def get_balance(address):
+        StateDB().get_balance(address)

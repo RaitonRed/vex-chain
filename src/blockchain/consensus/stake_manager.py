@@ -2,6 +2,7 @@ from typing import Dict
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
 from src.utils.database import db_connection
 from src.utils.logger import logger
+from src.blockchain.db.state_db import StateDB
 import time
 
 class StakeManager:
@@ -14,32 +15,22 @@ class StakeManager:
     def stake(address: str, amount: float, public_key_pem: str) -> str:
         """ثبت سهام برای یک ولیدیتور و ثبت کلید عمومی آن"""
         try:
-            # استفاده از آدرس ورودی به جای محاسبه مجدد
-            with db_connection() as conn:
-                cursor = conn.cursor()
+            # Deduct stake amount from balance
+            state_db = StateDB()
+            current_balance = state_db.get_balance(address)
+            if current_balance < amount:
+                logger.error(f"Insufficient balance for staking: {address}")
+                return None
                 
-                ValidatorRegistry.register_validator(
-                    address=address,
-                    public_key_pem=public_key_pem,
-                    stake=amount
-                )
-
-            #    # ثبت یا به روز رسانی ولیدیتور
-            #    cursor.execute('''
-            #        INSERT OR REPLACE INTO validators 
-            #        (address, public_key_pem, stake, last_active)
-            #        VALUES (?, ?, ?, datetime('now'))
-            #    ''', (address, public_key_pem, amount))
-            #    
-            #    # به روز رسانی سهام
-            #    cursor.execute('''
-            #        UPDATE validators 
-            #        SET stake = stake + ?, last_active = datetime('now')
-            #        WHERE address = ?
-            #    ''', (amount, address))
-                conn.commit()
-
-            # برگرداندن هش تراکنش شبیه‌سازی شده
+            state_db.update_balance(address, current_balance - amount)
+            
+            # Register validator
+            ValidatorRegistry.register_validator(
+                address=address,
+                public_key_pem=public_key_pem,
+                stake=amount
+            )
+            
             return f"stake_tx_{address}_{int(time.time())}"
         except Exception as e:
             logger.error(f"Staking failed: {e}")
