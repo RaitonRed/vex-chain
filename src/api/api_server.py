@@ -14,6 +14,17 @@ from cryptography.hazmat.primitives.asymmetric import ec
 import time
 import random
 
+VEX_CONFIG = {
+    "name": "VEX",
+    "symbol": "VEX",
+    "decimals": 18,
+    "total_supply": 20000000 * 10**18,
+    "block_reward": 50 * 10**18,  # 50 VEX per block
+    "foundation_address": "0x0000000000000000000000000000000000000001",
+    "ecosystem_address": "0x0000000000000000000000000000000000000002",
+    "public_sale_address": "0x0000000000000000000000000000000000000003"
+}
+
 # Create Flask app instance
 app = Flask(__name__)
 
@@ -116,6 +127,11 @@ def get_block(index: int):
     if not block:
         return jsonify({'error': 'Block not found'}), 404
         
+    # Calculate block reward (VEX minted in this block)
+    block_reward = VEX_CONFIG["block_reward"]
+    transaction_fees = sum(getattr(tx, 'fee', 0) for tx in block.transactions)
+    total_reward = block_reward + transaction_fees
+        
     return jsonify({
         'index': block.index,
         'hash': block.hash,
@@ -123,11 +139,19 @@ def get_block(index: int):
         'timestamp': block.timestamp,
         'nonce': block.nonce,
         'difficulty': block.difficulty,
+        'validator': block.validator,
+        'block_reward': block_reward,
+        'transaction_fees': transaction_fees,
+        'total_reward': total_reward,
+        'reward_currency': VEX_CONFIG["symbol"],
         'transactions': [{
             'tx_hash': tx.tx_hash,
             'sender': tx.sender,
             'recipient': tx.recipient,
-            'amount': tx.amount
+            'amount': tx.amount,
+            'currency': VEX_CONFIG["symbol"],
+            'fee': getattr(tx, 'fee', 0),
+            'fee_currency': VEX_CONFIG["symbol"]
         } for tx in block.transactions]
     }), 200
 
@@ -424,25 +448,43 @@ def add_transaction():
         return jsonify({'error': 'No data provided'}), 400
         
     try:
-        tx = Transaction(
-            sender=data.get('sender'),
-            recipient=data.get('recipient'),
-            amount=data.get('amount'),
-            data=data.get('data', {}),
-            signature=data.get('signature'),
-            nonce=data.get('nonce')
-        )
+        tx_data = {
+            'sender': data.get('sender'),
+            'recipient': data.get('recipient'),
+            'amount': data.get('amount'),
+            'data': data.get('data', {}),
+            'signature': data.get('signature'),
+            'nonce': data.get('nonce')
+        }
         
-        # بررسی اعتبار تراکنش
+        # Add VEX info to transaction data if not already present
+        if 'type' not in tx_data['data']:
+            tx_data['data']['type'] = 'vex_transfer'
+            tx_data['data']['symbol'] = VEX_CONFIG["symbol"]
+        
+        tx = Transaction(**tx_data)
+        
+        # Validate transaction
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
+        
+        # Check if sender has enough VEX for regular transfers
+        if tx.data.get('type') == 'vex_transfer':
+            sender_balance = StateDB().get_balance(tx.sender)
+            total_cost = tx.amount + getattr(tx, 'fee', 0)
+            
+            if sender_balance < total_cost:
+                return jsonify({
+                    'error': f'Insufficient VEX balance. Available: {sender_balance}, Required: {total_cost}'
+                }), 400
         
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
                 node.p2p_network.broadcast_transaction(tx)
             return jsonify({
                 'status': 'success',
-                'tx_hash': tx.tx_hash
+                'tx_hash': tx.tx_hash,
+                'currency': VEX_CONFIG["symbol"]
             }), 201
         else:
             return jsonify({'error': 'Failed to add transaction to mempool'}), 400
@@ -613,8 +655,10 @@ def get_account_info(address):
             'status': 'success',
             'address': address,
             'balance': balance,
+            'currency': VEX_CONFIG["symbol"],
             'nonce': nonce,
             'stake_amount': stake_amount,
+            'stake_currency': VEX_CONFIG["symbol"],
             'is_validator': is_validator
         }), 200
     except Exception as e:
@@ -634,7 +678,8 @@ def get_accounts():
             accounts.append({
                 'name': name,
                 'address': address,
-                'balance': balance
+                'balance': balance,
+                'currency': VEX_CONFIG["symbol"]
             })
         
         return jsonify({
@@ -790,3 +835,124 @@ def create_test_transaction():
 #        return jsonify({'status': 'success', 'message': 'Node shutting down'}), 200
 #    except Exception as e:
 #        return jsonify({'error': f'Failed to shutdown node: {str(e)}'}), 500
+
+@app.route('/vex/supply', methods=['GET'])
+def get_vex_supply():
+    """Get current VEX circulating supply"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+    
+    # Calculate circulating supply (total supply minus unclaimed rewards)
+    total_supply = VEX_CONFIG["total_supply"]
+    # In a real implementation, you'd subtract unclaimed rewards from total supply
+    
+    return jsonify({
+        'total_supply': total_supply,
+        'circulating_supply': total_supply,  # Simplified for now
+        'symbol': VEX_CONFIG["symbol"]
+    }), 200
+
+@app.route('/vex/balance/<address>', methods=['GET'])
+def get_vex_balance(address):
+    """Get VEX balance for a specific address"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        balance = StateDB().get_balance(address)
+        return jsonify({
+            'status': 'success',
+            'address': address,
+            'balance': balance,
+            'symbol': VEX_CONFIG["symbol"]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get VEX balance: {str(e)}'}), 500
+    
+@app.route('/vex/transfer', methods=['POST'])
+def transfer_vex():
+    """Transfer VEX coins between accounts"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+        
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+        
+    try:
+        # Create VEX transfer transaction
+        tx = Transaction(
+            sender=data.get('sender'),
+            recipient=data.get('recipient'),
+            amount=data.get('amount'),
+            data={
+                'type': 'vex_transfer',
+                'symbol': VEX_CONFIG["symbol"],
+                **data.get('data', {})
+            },
+            signature=data.get('signature'),
+            nonce=data.get('nonce')
+        )
+        
+        # Validate transaction
+        if not tx.is_valid():
+            return jsonify({'error': 'Invalid transaction signature'}), 400
+        
+        # Check if sender has enough VEX
+        sender_balance = StateDB().get_balance(tx.sender)
+        total_cost = tx.amount + getattr(tx, 'fee', 0)
+        
+        if sender_balance < total_cost:
+            return jsonify({
+                'error': f'Insufficient VEX balance. Available: {sender_balance}, Required: {total_cost}'
+            }), 400
+        
+        # Add to mempool
+        if node.mempool.add_transaction(tx):
+            if node.p2p_network:
+                node.p2p_network.broadcast_transaction(tx)
+            return jsonify({
+                'status': 'success',
+                'tx_hash': tx.tx_hash,
+                'message': f'Transferring {tx.amount} {VEX_CONFIG["symbol"]} to {tx.recipient}'
+            }), 201
+        else:
+            return jsonify({'error': 'Failed to add transaction to mempool'}), 400
+            
+    except Exception as e:
+        logger.error(f"VEX transfer error: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    
+@app.route('/vex/rewards/<validator_address>', methods=['GET'])
+def get_vex_rewards(validator_address):
+    """Get VEX rewards for a validator"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+    
+    try:
+        # Calculate total rewards earned by validator
+        total_rewards = 0
+        last_block = node.blockchain.get_last_block()
+        
+        if last_block:
+            # In a real implementation, you'd sum up all block rewards for this validator
+            # This is a simplified version
+            validator_blocks = [b for b in node.blockchain.chain if b.validator == validator_address]
+            total_rewards = len(validator_blocks) * VEX_CONFIG["block_reward"]
+            
+            # Add transaction fees from validated blocks
+            for block in validator_blocks:
+                total_rewards += sum(getattr(tx, 'fee', 0) for tx in block.transactions)
+        
+        return jsonify({
+            'status': 'success',
+            'validator': validator_address,
+            'total_rewards': total_rewards,
+            'symbol': VEX_CONFIG["symbol"]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get VEX rewards: {str(e)}'}), 500
