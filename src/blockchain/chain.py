@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional
+from blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.blockchain.consensus.consensus import Consensus
@@ -307,48 +308,61 @@ class Blockchain:
         return chain
     
     def add_block(self, block: Block, transactions: List[Transaction] = None, 
-         validator_private_key: ec.EllipticCurvePrivateKey = None,
-         external_block: Block = None,
-         selected_validator_address: str = None) -> Optional[Block]:
+              validator_private_key: ec.EllipticCurvePrivateKey = None,
+              external_block: Block = None,
+              selected_validator_address: str = None) -> Optional[Block]:
         """
-        اضافه کردن بلاک جدید به زنجیره
-        - اگر external_block ارائه شده باشد، بلاک از شبکه دریافت شده است
-        - اگر selected_validator_address مشخص شده باشد، از آن استفاده می‌شود
-        - در غیر این صورت، بلاک محلی ایجاد می‌شود
+        Add a new block to the blockchain 
         """
-
         if external_block:
             block_to_add = external_block
         else:
             block_to_add = block
 
+        # Get the last block
         last_block = self.get_last_block()
         if not last_block:
             logger.error("Cannot add block: no last block found.")
             return None
         
+        # Validate block structure
         if not block_to_add.is_valid(last_block):
             logger.error(f"Invalid block structure: {block_to_add.hash}")
             return None
 
+        # Verify block signature
         if not block_to_add.verify_signature():
             logger.error(f"Invalid signature for block: {block_to_add.hash}")
+            return None
 
+        # Initialize state database and VM
+        state_db = StateDB()
+        vm = SmartContractVM(state_db)
+        
+        # Process transactions
         for tx in block_to_add.transactions:
+            # Validate transaction
             if not tx.is_valid():
                 logger.error(f"Invalid transaction in block: {tx.tx_hash}")
                 return None
-            
-        state_db = StateDB()
-        vm = SmartContractVM(StateDB())
-        for tx in block_to_add.transactions:
+                
+            # Check nonce
+            sender_nonce = state_db.get_nonce(tx.sender)
+            if tx.nonce != sender_nonce + 1:
+                logger.error(f"Invalid nonce for tx {tx.tx_hash}")
+                return None
+
+            # Handle different transaction types
             if tx.contract_type == "NORMAL":
-                # Deduct amount + fee from sender
+                # Regular VEX coin transfer
                 sender_balance = state_db.get_balance(tx.sender)
                 total_deduct = tx.amount + getattr(tx, 'fee', 0)
+                
                 if sender_balance < total_deduct:
-                    logger.error(f"Insufficient balance for {tx.sender}")
+                    logger.error(f"Insufficient VEX balance for {tx.sender}")
                     return None
+                    
+                # Deduct amount + fee from sender
                 state_db.update_balance(tx.sender, sender_balance - total_deduct)
                 
                 # Add amount to recipient
@@ -357,7 +371,48 @@ class Blockchain:
                 
                 # Increment sender's nonce
                 state_db.increment_nonce(tx.sender)
-        
+                
+            elif tx.contract_type == "CONTRACT":
+                # Smart contract execution
+                logger.info(f"Executing smart contract tx: {tx.tx_hash[:8]}")
+                success, result = vm.execute(
+                    tx, 
+                    block_to_add.index,
+                    block_to_add.timestamp
+                )
+                
+                if success:
+                    logger.info(f"Contract executed successfully. Result: {result}")
+                    tx.contract_output = result
+                else:
+                    logger.error(f"Contract execution failed: {result}")
+                    return None
+                    
+            elif tx.contract_type == "VEX_REWARD":
+                # VEX block reward transaction (mint new VEX)
+                recipient_balance = state_db.get_balance(tx.recipient)
+                state_db.update_balance(tx.recipient, recipient_balance + tx.amount)
+                
+            elif tx.contract_type == "VEX_STAKE":
+                # VEX staking transaction
+                sender_balance = state_db.get_balance(tx.sender)
+                if sender_balance < tx.amount:
+                    logger.error(f"Insufficient VEX balance for staking: {tx.sender}")
+                    return None
+                    
+                # Move VEX to staking contract
+                state_db.update_balance(tx.sender, sender_balance - tx.amount)
+                staking_balance = state_db.get_balance(tx.recipient)
+                state_db.update_balance(tx.recipient, staking_balance + tx.amount)
+                
+                # Update validator stake
+                StakeManager.stake(tx.sender, tx.amount, ValidatorRegistry.get_public_key_pem(tx.sender))
+                
+            else:
+                logger.error(f"Unknown transaction type: {tx.contract_type}")
+                return None
+
+        # Save block to database
         try:
             block_id = BlockRepository.save_block(block_to_add)
             TransactionRepository.save_transactions_bulk(block_to_add.transactions, block_id)
@@ -368,6 +423,9 @@ class Blockchain:
             self.block_cache.put(block_to_add.index, block_to_add)
             
             logger.info(f"Block #{block_to_add.index} added: {block_to_add.hash[:10]}...")
+            
+            # Distribute VEX rewards to validator
+            self._distribute_vex_rewards(block_to_add)
             
             # Broadcast the block if it's a local block
             if not external_block and hasattr(self, 'p2p_network') and self.p2p_network:
@@ -384,6 +442,32 @@ class Blockchain:
             if block_to_add in self.chain:
                 self.chain.remove(block_to_add)
             return None
+
+    def _distribute_vex_rewards(self, block: Block):
+        """Distribute VEX rewards to the block validator"""
+        # Calculate reward (example: fixed 10 VEX per block)
+        base_reward = 50 # fixed block reward of 50 VEX
+        total_fees = sum(getattr(tx, 'fee', 0) for tx in block.transactions if hasattr(tx, 'fee'))
+        total_reward = base_reward + total_fees
+
+        reward_tx = Transaction(
+            sender="0x0000000000000000000000000000000000000000", # System address
+            recipient=block.validator,
+            amount=total_reward,
+            contract_type="VEX_REWARD",
+            data={
+                "type": "block_reward",
+                "block_index": block.index,
+            }
+        )
+
+        logger.info(f"Distributing {total_reward} VEX to validator {block.validator} for block #{block.index}")
+
+        # Update Validator balance
+        state_db = StateDB()
+        validator_balance = state_db.get_balance(block.validator)
+        balance = validator_balance + total_reward
+        state_db.update_balance(block.validator, balance)
 
     def _add_external_block(self, block: Block) -> Optional[Block]:
         """اضافه کردن بلاک دریافتی از شبکه"""
