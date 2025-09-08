@@ -15,6 +15,26 @@ from src.blockchain.block import Block
 from src.utils.database import db_connection
 from src.utils.cache import LRUCache
 
+VEX_CONFIG = {
+    "name": "VEX",
+    "symbol": "VEX",
+    "decimals": 18,
+    "total_supply": 20000000 * 10**18, # 20 million tokens with 18 decimals
+    "initial_distribution": {
+        "foundation": 0.2, # 20% to foundation (4,000,000 VEX)
+        "ecosystem": 0.3, # 30% to ecosystem development (6,000,000 VEX)
+        "public_sale": 0.5 # 50% to public sale (10,000,000 VEX)
+    }
+}
+
+foundation_address = "0x0000000000000000000000000000000000000001"
+ecosystem_address = "0x0000000000000000000000000000000000000002"
+public_sale_address = "0x0000000000000000000000000000000000000003"
+
+foundation_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["foundation"]
+ecosystem_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["ecosystem"]
+public_sale_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["public_sale"]
+
 class Blockchain:
     def __init__(self, difficulty: int = 4):
         self.difficulty = difficulty
@@ -187,6 +207,38 @@ class Blockchain:
                 nonce=0
             )
             
+            vex_transactions = [
+                Transaction(
+                    sender="0x0",
+                    recipient=foundation_address,
+                    amount=foundation_amount,
+                    data={
+                        "type": "vex_genesis",
+                        "distribution": "foundation",
+                    }
+                ),
+                Transaction(
+                    sender="0x0",
+                    recipient=ecosystem_address,
+                    amount=ecosystem_amount,
+                    data={
+                        "type": "vex_genesis",
+                        "distribution": "ecosystem",
+                    }
+                ),
+                Transaction(
+                    sender="0x0",
+                    recipient=public_sale_address,
+                    amount=public_sale_amount,
+                    data={
+                        "type": "vex_genesis",
+                        "distribution": "public_sale",
+                    }
+                )
+            ]
+
+            genesis_block.transactions.extend(vex_transactions)
+
             # Sign genesis block
             genesis_block.sign_block(genesis_private_key, 1000000)
             
