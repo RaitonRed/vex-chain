@@ -1,6 +1,6 @@
 import json
 from typing import List, Optional
-from blockchain.consensus.stake_manager import StakeManager
+from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
 from src.blockchain.consensus.consensus import Consensus
