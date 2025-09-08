@@ -1,5 +1,3 @@
-<div align="center"><a href="https://github.com/Safouene1/support-palestine-banner/blob/master/Markdown-pages/Support.md"><img src="https://raw.githubusercontent.com/Safouene1/support-palestine-banner/master/banner-project.svg" alt="Support Palestine" style="width: 100%;"></a></div>
-
 # VEX Chain - Proof of Stake Implementation
 
 A Python-based blockchain implementation with Proof of Stake consensus, smart contracts, P2P networking, and a comprehensive CLI interface.
