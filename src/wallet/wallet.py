@@ -98,7 +98,7 @@ class Wallet:
         ).decode('utf-8')
         
         # Generate address
-        address = 'VCX' + hashlib.blake2b(public_bytes, digest_size=20).hexdigest()
+        address = '0x' + hashlib.blake2b(public_bytes, digest_size=20).hexdigest()
         
         # Encrypt private key with user password
         encrypted_private = self._encrypt_data(private_pem, password)
