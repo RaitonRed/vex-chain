@@ -184,3 +184,22 @@ class StateDB:
             cursor.execute("UPDATE accounts SET nonce = 0 WHERE address = '0x0000000000000000000000000000000000000000'")
         
             conn.commit()
+
+    def get_vex_balance(self, address: str) -> float:
+        """Get VEX balance for an address"""
+        return self.get_balance(address)
+    
+    def update_vex_balance(self, address: str, amount: float):
+        """Update VEX balance for an address"""
+        self.update_balance(address, amount)
+
+    def transfer_vex(self, sender: str, recipient: str, amount: float) -> bool:
+        """Transfer VEX from sender to recipient"""
+        sender_balance = self.get_vex_balance(sender)
+        if sender_balance < amount:
+            raise ValueError("Insufficient balance")
+            return False
+
+        self.update_vex_balance(sender, sender_balance - amount)
+        recipient_balance = self.get_vex_balance(recipient)
+        self.update_vex_balance(recipient, recipient_balance + amount)
