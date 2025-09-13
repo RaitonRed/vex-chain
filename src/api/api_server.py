@@ -623,6 +623,66 @@ def import_account():
     except Exception as e:
         return jsonify({'error': f'Failed to import account: {str(e)}'}), 500
 
+@app.route('/node/stake', methods=['POST'])
+def node_stake():
+    """Endpoint for nodes to stake and become validators"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    data = request.json
+    amount = data.get('amount', 1000.0)  # Default stake amount
+
+    try:
+        # Get node's wallet
+        node_account = node.wallet.accounts.get(f"node_{node.p2p_port}")
+        if not node_account:
+            return jsonify({'error': 'Node wallet not found'}), 400
+
+        address = node_account['address']
+        public_key_pem = node_account['public_key']
+
+        # Perform staking
+        tx_id = StakeManager.stake(address, amount, public_key_pem)
+        if tx_id:
+            return jsonify({
+                'status': 'success',
+                'message': f'Node staked {amount} coins successfully',
+                'tx_id': tx_id,
+                'validator_address': address
+            }), 200
+        else:
+            return jsonify({'error': 'Staking failed'}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Staking failed: {str(e)}'}), 500
+
+@app.route('/node/validator-info', methods=['GET'])
+def get_node_validator_info():
+    """Get validator information for this node"""
+    node = current_app.config.get('node')
+    if not node:
+        return jsonify({'error': 'Node not initialized'}), 500
+
+    try:
+        node_account = node.wallet.accounts.get(f"node_{node.p2p_port}")
+        if not node_account:
+            return jsonify({'error': 'Node wallet not found'}), 400
+
+        address = node_account['address']
+        stake = StakeManager.get_validator_stake(address)
+        is_active = address in StakeManager.get_active_validators()
+
+        return jsonify({
+            'status': 'success',
+            'validator_address': address,
+            'stake_amount': stake,
+            'is_active': is_active,
+            'node_port': node.p2p_port
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to get validator info: {str(e)}'}), 500
+
 @app.route('/accounts/<address>/nonce', methods=['GET'])
 def get_account_nonce(address):
     node = current_app.config.get('node')
