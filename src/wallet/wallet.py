@@ -273,3 +273,12 @@ class Wallet:
 
     def get_balance(address):
         StateDB().get_balance(address)
+
+    def create_node_account(self, node_port, password):
+        """Create a dedicated account for a node"""
+        account_name = f"node_{node_port}"
+        return self.create_account(account_name, password)
+
+    def get_node_account(self, node_port):
+        """Get node's account details"""
+        return self.get_account(f"node_{node_port}")
