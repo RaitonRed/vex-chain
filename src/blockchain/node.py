@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import threading
 from src.blockchain.consensus.consensus import Consensus
@@ -45,6 +46,17 @@ class BlockchainNode:
         self.mempool.p2p_network = self.p2p_network
         self.p2p_network.set_mempool(self.mempool)
 
+        # Create Node-specific  data directory
+        self.data_dir = f"data/node_{p2p_port}"
+        os.makedirs(self.data_dir, exist_ok=True)
+
+        # Initialize node wallet
+        self.node_wallet_path = os.path.join(self.data_dir, 'wallet.json')
+        self._init_node_wallet()
+
+        # Register validator
+        self._register_as_validator()
+
         self.p2p_thread = None
         self.api_thread = None
         self.health_thread = None
@@ -53,6 +65,73 @@ class BlockchainNode:
         self.monitor = None
         self._services_ready = threading.Event()
         self._running = False
+
+    def _init_node_wallet(self):
+        """Initialize node's wallet if it doesn't exist"""
+        if not os.path.exists(self.node_wallet_path):
+            password = 12345 # This is For test comment it
+            # password = os.getenv("NODE_WALLET_PASSWORD", "default_password")
+            address, private_key = self.wallet.create_account(
+                f"node_{self.p2p_port}",
+                password
+            )
+
+            node_wallet_data = {
+                'address': address,
+                'private_key': private_key,
+                'password': password,
+                'public_key': self.wallet.accounts[f"node_{self.p2p_port}"]['public_key']
+            }
+
+            with open(self.node_wallet_path, 'w') as f:
+                json.dump(node_wallet_data, f, indent=2)
+
+            logger.info(f"Created node wallet: {address}")
+        else:
+            # Load existing node wallet
+            with open(self.node_wallet_path, 'r') as f:
+                node_wallet_data = json.load(f)
+
+            # Import into main wallet
+            self.wallet.import_private_key(
+                f"node_{self.p2p_port}",
+                node_wallet_data['privare_key'],
+                password=1234
+            )
+            logger.info(f"Loaded existing node wallet: {node_wallet_data['address']}")
+
+    def _register_as_validator(self):
+        """Register node as validator eith its stake"""
+        node_account = self.wallet.accounts.get(f"node_{self.p2p_port}")
+        if not node_account:
+            logger.error("Node wallet not found")
+            return
+
+        address = node_account['address']
+        public_key_pem = node_account['public_key']
+        
+        # Auto-stake a fixed amount (e.g., 1000 coins)
+        stake_amount = 1000.0
+        
+        # Check if already registered
+        existing_stake = StakeManager.get_validator_stake(address)
+        if existing_stake > 0:
+            logger.info(f"Node already registered as validator with stake: {existing_stake}")
+            return
+
+        # Register validator
+        try:
+            tx_id = StakeManager.stake(
+                address, 
+                stake_amount, 
+                public_key_pem
+            )
+            if tx_id:
+                logger.info(f"Node registered as validator with stake {stake_amount}. TX: {tx_id}")
+            else:
+                logger.error("Failed to register node as validator")
+        except Exception as e:
+            logger.error(f"Validator registration failed: {e}")
 
     def _start_api_service(self):
         try:
