@@ -15,6 +15,12 @@ class StakeManager:
     def stake(address: str, amount: float, public_key_pem: str) -> str:
         """ثبت سهام برای یک ولیدیتور و ثبت کلید عمومی آن"""
         try:
+            # Check if validator already exists
+            existing_stake = StakeManager.get_validator_stake(address)
+            if existing_stake > 0:
+                logger.info(f"Validator {address} already exists with stake {existing_stake}")
+                return f"stake_update_{address}_{int(time.time())}"
+
             # Deduct stake amount from balance
             state_db = StateDB()
             current_balance = state_db.get_balance(address)
