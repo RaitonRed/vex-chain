@@ -20,7 +20,7 @@ VEX_CONFIG = {
     "name": "VEX",
     "symbol": "VEX",
     "decimals": 18,
-    "total_supply": 20000000 * 10**18, # 20 million tokens with 18 decimals
+    "total_supply": 2_000_000_000 * 10**0, # 20 million tokens with 18 decimals
     "initial_distribution": {
         "foundation": 0.2, # 20% to foundation (4,000,000 VEX)
         "ecosystem": 0.3, # 30% to ecosystem development (6,000,000 VEX)

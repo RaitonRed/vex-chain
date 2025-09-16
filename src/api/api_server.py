@@ -18,7 +18,7 @@ VEX_CONFIG = {
     "name": "VEX",
     "symbol": "VEX",
     "decimals": 18,
-    "total_supply": 20000000 * 10**18,
+    "total_supply": 2_000_000_000 * 10**0,
     "block_reward": 50 * 10**18,  # 50 VEX per block
     "foundation_address": "0x0000000000000000000000000000000000000001",
     "ecosystem_address": "0x0000000000000000000000000000000000000002",
