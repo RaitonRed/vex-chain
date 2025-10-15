@@ -2,7 +2,7 @@ VEX_CONFIG = {
     "name": "VEX",
     "symbol": "VEX",
     "decimals": 18,
-    "total_supply": "total_supply": 90_000_000 * 10**18, # 90 million tokens with 18 decimals
+    "total_supply": int(90_000_000 * 10**18), # 90 million tokens with 18 decimals
     "initial_distribution": {
         "foundation": 0.2,
         "ecosystem": 0.3,
@@ -20,6 +20,6 @@ foundation_address = "0x0000000000000000000000000000000000000001"
 ecosystem_address = "0x0000000000000000000000000000000000000002"
 public_sale_address = "0x0000000000000000000000000000000000000003"
 
-foundation_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["foundation"]
-ecosystem_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["ecosystem"]
-public_sale_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["public_sale"]
+foundation_amount = int(VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["foundation"])
+ecosystem_amount = int(VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["ecosystem"])
+public_sale_amount = int(VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["public_sale"])
