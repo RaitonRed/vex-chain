@@ -20,11 +20,17 @@ VEX_CONFIG = {
     "name": "VEX",
     "symbol": "VEX",
     "decimals": 18,
-    "total_supply": 2_000_000_000 * 10**0, # 20 million tokens with 18 decimals
+    "total_supply": "total_supply": 90_000_000 * 10**18, # 90 million tokens with 18 decimals
     "initial_distribution": {
-        "foundation": 0.2, # 20% to foundation (4,000,000 VEX)
-        "ecosystem": 0.3, # 30% to ecosystem development (6,000,000 VEX)
-        "public_sale": 0.5 # 50% to public sale (10,000,000 VEX)
+        "foundation": 0.2,
+        "ecosystem": 0.3,
+        "public_sale": 0.5
+    },
+    "metadata": {
+        "website": "https://vexcoin.github.io",
+        "description": "VEX Coin is a decentralized cryptocurrency powering the VEX blockchain.",
+        "algorithm": "Proof of Stake",
+        "network": "mainnet"
     }
 }
 
