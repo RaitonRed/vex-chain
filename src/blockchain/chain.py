@@ -39,7 +39,7 @@ public_sale_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distributi
 class Blockchain:
     def __init__(self, difficulty: int = 4):
         self.difficulty = difficulty
-        
+
         self.chain = []
         self.block_cache = LRUCache(capacity=100)  # Cache for blocks
         self.last_block = self.load_last_block()  # Load last block from cache or DB
@@ -60,7 +60,7 @@ class Blockchain:
         try:
             logger.info("Loading blockchain from database...")
             self.chain = self.load_chain()
-            
+
             if not self.chain:
                 logger.info("No existing chain found, creating new blockchain")
                 self._reset_blockchain()  # Clean slate
@@ -71,7 +71,7 @@ class Blockchain:
                 self._initialize_new_chain()
             else:
                 logger.info(f"Successfully loaded blockchain with {len(self.chain)} blocks")
-                
+
         except Exception as e:
             logger.error(f"Blockchain initialization failed: {e}")
             # Last resort: try to create completely fresh blockchain
@@ -92,7 +92,7 @@ class Blockchain:
             max_index = cursor.fetchone()[0]
             if max_index is None:
                 return None
-            return BlockRepository.get_block_by_index(max_index)            
+            return BlockRepository.get_block_by_index(max_index)
 
 
     def _reset_blockchain(self):
@@ -112,14 +112,14 @@ class Blockchain:
                 cursor.execute("DELETE FROM sqlite_sequence WHERE name='blocks'")
                 cursor.execute("DELETE FROM sqlite_sequence WHERE name='transactions'")
                 conn.commit()
-            
+
             # Reset StateDB if implemented
             if hasattr(StateDB, 'reset'):
                 StateDB().reset()
                 logger.info("StateDB reset complete")
             else:
                 logger.warning("StateDB reset not implemented")
-            
+
             logger.info("Blockchain reset successfully")
         except Exception as e:
             logger.error(f"Blockchain reset failed: {e}")
@@ -146,20 +146,20 @@ class Blockchain:
     def _initialize_special_accounts(self):
         """Create system accounts if they don't exist"""
         state_db = StateDB()
-        
+
         # Create coinbase account
         coinbase_address = "0x0000000000000000000000000000000000000000"
         if not state_db.get_account(coinbase_address):
             state_db.create_account(coinbase_address, "", 0)
-        
+
         # Create genesis account
         genesis_address = "0x0000000000000000000000000000000000000001"
         if not state_db.get_account(genesis_address):
             state_db.create_account(genesis_address, "", 0)
-        
+
         # Set initial balance for genesis account
         state_db.update_balance(genesis_address, 1000000)
-        
+
         logger.info("System accounts initialized")
 
     def _create_genesis_block(self) -> Block:
@@ -167,23 +167,23 @@ class Blockchain:
         try:
             # Create private key for genesis validator
             genesis_private_key = ec.generate_private_key(ec.SECP256K1())
-            
+
             # Generate validator address
             validator_address = ValidatorRegistry.get_validator_address(genesis_private_key)
-            
+
             # Generate public key PEM
             public_key_pem = genesis_private_key.public_key().public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).decode()
-            
+
             # Register genesis validator first
             ValidatorRegistry.register_validator(
                 address=validator_address,
                 public_key_pem=public_key_pem,
                 stake=1000000  # Genesis validator stake
             )
-            
+
             # Create genesis transaction
             genesis_tx = Transaction(
                 sender="0x0000000000000000000000000000000000000000",
@@ -195,7 +195,7 @@ class Blockchain:
             )
 
             genesis_tx.tx_hash = genesis_tx.calculate_hash()
-            
+
             # Create genesis block
             genesis_block = Block(
                 index=0,
@@ -207,7 +207,7 @@ class Blockchain:
                 difficulty=self.difficulty,
                 nonce=0
             )
-            
+
             vex_transactions = [
                 Transaction(
                     sender="0x0",
@@ -242,77 +242,77 @@ class Blockchain:
 
             # Sign genesis block
             genesis_block.sign_block(genesis_private_key, 1000000)
-            
+
             # Save to database with proper error handling
             try:
                 logger.info("Saving genesis block to database...")
                 block_id = BlockRepository.save_block(genesis_block)
-                
+
                 if block_id is None:
                     raise RuntimeError("Failed to save genesis block: block_id is None")
-                    
+
                 logger.info(f"Genesis block saved with ID: {block_id}")
-                
+
                 # Save genesis transaction
                 logger.info("Saving genesis transaction...")
                 tx_id = TransactionRepository.save_transaction(genesis_tx, block_id)
-                
+
                 if tx_id is None:
                     raise RuntimeError("Failed to save genesis transaction: tx_id is None")
-                    
+
                 logger.info(f"Genesis transaction saved with ID: {tx_id}")
                 logger.info(f"Genesis block created successfully with hash: {genesis_block.hash}")
-                
+
                 return genesis_block
-                
+
             except Exception as db_error:
                 logger.error(f"Database error while saving genesis block: {db_error}")
-                
+
                 # Try to clean up any partial data
                 try:
                     with db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute('DELETE FROM blocks WHERE index = 0')
-                        cursor.execute('DELETE FROM transactions WHERE sender = ? AND recipient = ?', 
+                        cursor.execute('DELETE FROM transactions WHERE sender = ? AND recipient = ?',
                                     (genesis_tx.sender, genesis_tx.recipient))
                         conn.commit()
                         logger.info("Cleaned up partial genesis data")
                 except Exception as cleanup_error:
                     logger.error(f"Failed to cleanup genesis data: {cleanup_error}")
-                
+
                 raise RuntimeError(f"Failed to save genesis block to database: {db_error}") from db_error
-                
+
         except Exception as e:
             logger.error(f"Failed to create genesis block: {e}")
             raise RuntimeError(f"Genesis block creation failed: {e}") from e
-        
+
     def load_chain(self) -> List[Block]:
         """بارگذاری زنجیره از دیتابیس"""
         chain = []
         block_count = BlockRepository.get_block_count()
-        
+
         for index in range(block_count):
             block = BlockRepository.get_block_by_index(index)
             if not block:
                 logger.error(f"Invalid block at index {index}")
                 return []
-                
+
             chain.append(block)
-        
+
         # اعتبارسنجی زنجیره بارگذاری شده
         if not chain or not Consensus.is_chain_valid(chain):
             logger.error("Loaded chain is invalid")
             return []
-            
+
         logger.info(f"Successfully loaded chain with {len(chain)} blocks")
         return chain
-    
-    def add_block(self, block: Block, transactions: List[Transaction] = None, 
+
+    def add_block(self, block: Block, transactions: List[Transaction] = None,
               validator_private_key: ec.EllipticCurvePrivateKey = None,
               external_block: Block = None,
               selected_validator_address: str = None) -> Optional[Block]:
         """
-        Add a new block to the blockchain 
+        Add a new block to the blockchain
         """
         if external_block:
             block_to_add = external_block
@@ -324,7 +324,7 @@ class Blockchain:
         if not last_block:
             logger.error("Cannot add block: no last block found.")
             return None
-        
+
         # Validate block structure
         if not block_to_add.is_valid(last_block):
             logger.error(f"Invalid block structure: {block_to_add.hash}")
@@ -338,14 +338,14 @@ class Blockchain:
         # Initialize state database and VM
         state_db = StateDB()
         vm = SmartContractVM(state_db)
-        
+
         # Process transactions
         for tx in block_to_add.transactions:
             # Validate transaction
             if not tx.is_valid():
                 logger.error(f"Invalid transaction in block: {tx.tx_hash}")
                 return None
-                
+
             # Check nonce
             sender_nonce = state_db.get_nonce(tx.sender)
             if tx.nonce != sender_nonce + 1:
@@ -357,57 +357,57 @@ class Blockchain:
                 # Regular VEX coin transfer
                 sender_balance = state_db.get_balance(tx.sender)
                 total_deduct = tx.amount + getattr(tx, 'fee', 0)
-                
+
                 if sender_balance < total_deduct:
                     logger.error(f"Insufficient VEX balance for {tx.sender}")
                     return None
-                    
+
                 # Deduct amount + fee from sender
                 state_db.update_balance(tx.sender, sender_balance - total_deduct)
-                
+
                 # Add amount to recipient
                 recipient_balance = state_db.get_balance(tx.recipient)
                 state_db.update_balance(tx.recipient, recipient_balance + tx.amount)
-                
+
                 # Increment sender's nonce
                 state_db.increment_nonce(tx.sender)
-                
+
             elif tx.contract_type == "CONTRACT":
                 # Smart contract execution
                 logger.info(f"Executing smart contract tx: {tx.tx_hash[:8]}")
                 success, result = vm.execute(
-                    tx, 
+                    tx,
                     block_to_add.index,
                     block_to_add.timestamp
                 )
-                
+
                 if success:
                     logger.info(f"Contract executed successfully. Result: {result}")
                     tx.contract_output = result
                 else:
                     logger.error(f"Contract execution failed: {result}")
                     return None
-                    
+
             elif tx.contract_type == "VEX_REWARD":
                 # VEX block reward transaction (mint new VEX)
                 recipient_balance = state_db.get_balance(tx.recipient)
                 state_db.update_balance(tx.recipient, recipient_balance + tx.amount)
-                
+
             elif tx.contract_type == "VEX_STAKE":
                 # VEX staking transaction
                 sender_balance = state_db.get_balance(tx.sender)
                 if sender_balance < tx.amount:
                     logger.error(f"Insufficient VEX balance for staking: {tx.sender}")
                     return None
-                    
+
                 # Move VEX to staking contract
                 state_db.update_balance(tx.sender, sender_balance - tx.amount)
                 staking_balance = state_db.get_balance(tx.recipient)
                 state_db.update_balance(tx.recipient, staking_balance + tx.amount)
-                
+
                 # Update validator stake
                 StakeManager.stake(tx.sender, tx.amount, ValidatorRegistry.get_public_key_pem(tx.sender))
-                
+
             else:
                 logger.error(f"Unknown transaction type: {tx.contract_type}")
                 return None
@@ -416,17 +416,17 @@ class Blockchain:
         try:
             block_id = BlockRepository.save_block(block_to_add)
             TransactionRepository.save_transactions_bulk(block_to_add.transactions, block_id)
-            
+
             # Update in-memory chain and cache
             self.chain.append(block_to_add)
             self.last_block = block_to_add
             self.block_cache.put(block_to_add.index, block_to_add)
-            
+
             logger.info(f"Block #{block_to_add.index} added: {block_to_add.hash[:10]}...")
-            
+
             # Distribute VEX rewards to validator
             self._distribute_vex_rewards(block_to_add)
-            
+
             # Broadcast the block if it's a local block
             if not external_block and hasattr(self, 'p2p_network') and self.p2p_network:
                 try:
@@ -434,7 +434,7 @@ class Blockchain:
                 except Exception as e:
                     logger.error(f"Block broadcast failed: {e}")
                     self._save_pending_block(block_to_add)
-            
+
             return block_to_add
         except Exception as e:
             logger.error(f"Failed to save block: {e}")
@@ -475,28 +475,28 @@ class Blockchain:
         if not last_block:
             logger.error("Cannot add external block: no last block")
             return None
-            
+
         # اعتبارسنجی ساختار بلاک
         if not block.is_valid(last_block):
             logger.error(f"Invalid external block received: {block.hash}")
             return None
-            
+
         # اعتبارسنجی امضای بلاک
         if not block.verify_signature():
             logger.error(f"Invalid signature for external block: {block.hash}")
             return None
-            
+
         # اعتبارسنجی تراکنش‌ها
         for tx in block.transactions:
                 sender_nonce = StateDB().get_nonce(tx.sender)
                 if tx.nonce != sender_nonce + 1:
                     logger.error(f"Invalid nonce for tx {tx.tx_hash}")
                     return None
-                
+
                 if not tx.is_valid():
                     logger.error(f"Invalid transaction in external block: {tx.tx_hash}")
                     return None
-                
+
                 # بررسی اینکه فرستنده موجودی کافی دارد
                 if tx.contract_type == "NORMAL":
                     sender_balance = StateDB().get_balance(tx.sender)
@@ -504,7 +504,7 @@ class Blockchain:
                         logger.error(f"Insufficient balance for {tx.sender}")
                         return None
 
-        
+
         # اجرای قراردادهای هوشمند در بلاک دریافتی
         vm = SmartContractVM(StateDB())
         for tx in block.transactions:
@@ -512,16 +512,16 @@ class Blockchain:
             if tx.nonce != sender_nonce + 1:
                 logger.error(f"Invalid nonce for tx {tx.tx_hash}")
                 return None
-            
+
             if tx.contract_type != "NORMAL":
                 logger.info(f"Executing smart contract tx from external block: {tx.tx_hash[:8]}")
-                
+
                 success, result = vm.execute(
-                    tx, 
+                    tx,
                     block.index,
                     block.timestamp
                 )
-                
+
                 if success:
                     logger.info(f"Contract executed successfully. Result: {result}")
                     tx.contract_output = result
@@ -529,10 +529,10 @@ class Blockchain:
                     logger.error(f"Contract execution failed: {result}")
                     # در یک پیاده‌سازی واقعی، ممکن است بخواهید بلاک را رد کنید
                     # اما در اینجا فقط خطا را ثبت می‌کنیم
-        
+
         # افزودن بلاک به زنجیره
         self.chain.append(block)
-        
+
         # ذخیره در دیتابیس
         try:
             block_id = BlockRepository.save_block(block)
@@ -545,56 +545,6 @@ class Blockchain:
             self.chain.pop()
             return None
 
-    def _create_genesis_block(self) -> Block:
-        """ایجاد بلاک جنسیس با مکانیزم PoS"""
-        genesis_tx = Transaction(
-            sender="0",
-            recipient="0",
-            amount=0,
-            data={"type": "genesis", "message": "Initial block of the chain"}
-        )
-        
-        # ایجاد یک کلید خصوصی برای ولیدیتور جنسیس
-        genesis_private_key = ec.generate_private_key(ec.SECP256K1())  # تعریف متغیر
-        validator_address = ValidatorRegistry.get_validator_address(genesis_private_key)
-        
-        # تولید کلید عمومی به فرمت PEM
-        public_key_pem = genesis_private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ).decode()
-        
-        # ثبت ولیدیتور جنسیس با سهام اولیه
-        ValidatorRegistry.register_validator(
-            address=validator_address,
-            public_key_pem=public_key_pem,
-            stake=1000000  # سهام اولیه بزرگ برای جنسیس
-        )
-        
-        genesis_block = Block(
-            index=0,
-            timestamp=0,
-            transactions=[genesis_tx],
-            previous_hash="0",
-            validator=validator_address,
-            stake_amount=1000000,
-            difficulty=self.difficulty,
-            nonce=0  # Explicitly set nonce
-        )
-        
-        # امضای بلاک جنسیس
-        genesis_block.sign_block(genesis_private_key, 1000000)
-        
-        # ذخیره در دیتابیس
-        try:
-            block_id = BlockRepository.save_block(genesis_block)
-            TransactionRepository.save_transaction(genesis_tx, block_id)
-            logger.info(f"Genesis block created with hash: {genesis_block.hash}")
-            return genesis_block
-        except Exception as e:
-            logger.error(f"Failed to save genesis block: {e}")
-            raise
-    
     def get_last_block(self) -> Optional[Block]:
         """دریافت آخرین بلاک زنجیره"""
         if not self.chain:
@@ -608,27 +558,27 @@ class Blockchain:
     def resolve_conflicts(self, nodes: List[str]) -> bool:
         """حل تعارضات با نودهای دیگر (طولانی‌ترین زنجیره معتبر)"""
         logger.info("Resolving conflicts with network nodes...")
-        
+
         new_chain = None
         max_cumulative_diff = Consensus.cumulative_difficulty(self.chain)
-        
+
         # در اینجا معمولاً با نودهای دیگر ارتباط برقرار می‌کنیم
         # برای سادگی، فرض می‌کنیم زنجیره‌های دیگر را دریافت کرده‌ایم
-        
+
         # اگر زنجیره جدیدی با سختی تجمعی بیشتر پیدا شد
         if new_chain and Consensus.is_chain_valid(new_chain):
             if Consensus.cumulative_difficulty(new_chain) > max_cumulative_diff:
                 self.chain = new_chain
                 logger.info("Chain replaced with longer valid chain")
                 return True
-                
+
         logger.info("Current chain remains authoritative")
         return False
 
     def get_blocks_paginated(self, page: int = 1, per_page: int = 10) -> List[Block]:
         """دریافت بلاک‌ها به صورت صفحه‌بندی شده"""
         return BlockRepository.get_blocks_paginated(page, per_page)
-    
+
     def _save_pending_block(self, block):
         # ذخیره بلوک در صف انتظار برای انتشار مجدد
         with db_connection() as conn:
@@ -639,7 +589,7 @@ class Blockchain:
             ''', (json.dumps(block.to_dict()),))
             conn.commit()
 
-    def _create_new_block(self, transactions: List[Transaction], 
+    def _create_new_block(self, transactions: List[Transaction],
                  validator_private_key: ec.EllipticCurvePrivateKey,
                  selected_validator_address: str = None) -> Optional[Block]:
         """ایجاد و افزودن بلاک جدید محلی"""
@@ -668,7 +618,7 @@ class Blockchain:
             if tx.contract_type != "NORMAL":
                 logger.info(f"Executing smart contract tx: {tx.tx_hash[:8]}")
                 success, result = vm.execute(
-                    tx, 
+                    tx,
                     last_block.index + 1,
                     time.time()
                 )
@@ -693,7 +643,7 @@ class Blockchain:
             # روش قدیمی - محاسبه از کلید خصوصی
             validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
             stake = ValidatorRegistry.get_validator_stake(validator_address)
-        
+
         if stake <= 0:
             logger.error(f"Validator {validator_address} has no stake or not registered in DB")
             return None
@@ -717,9 +667,9 @@ class Blockchain:
             block_id = BlockRepository.save_block(new_block)
             TransactionRepository.save_transactions_bulk(successful_txs, block_id)
             self.chain.append(new_block)
-            
+
             logger.info(f"Block #{new_block.index} added to chain: {new_block.hash[:10]}...")
-            
+
             # انتشار بلاک در شبکه
             if hasattr(self, 'p2p_network') and self.p2p_network:
                 try:
@@ -727,9 +677,9 @@ class Blockchain:
                 except Exception as e:
                     logger.error(f"Block broadcast failed: {e}")
                     self._save_pending_block(new_block)
-                    
+
             return new_block
-            
+
         except Exception as e:
             logger.error(f"Failed to save block: {e}")
             # حذف بلاک از زنجیره اگر ذخیره‌سازی ناموفق بود
