@@ -1,6 +1,7 @@
 import json
 import time
 from typing import List, Optional
+from src.blockchain.vex_config import *
 from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.block import Block
 from src.blockchain.transaction import Transaction
@@ -15,32 +16,6 @@ from cryptography.hazmat.primitives import serialization
 from src.blockchain.block import Block
 from src.utils.database import db_connection
 from src.utils.cache import LRUCache
-
-VEX_CONFIG = {
-    "name": "VEX",
-    "symbol": "VEX",
-    "decimals": 18,
-    "total_supply": "total_supply": 90_000_000 * 10**18, # 90 million tokens with 18 decimals
-    "initial_distribution": {
-        "foundation": 0.2,
-        "ecosystem": 0.3,
-        "public_sale": 0.5
-    },
-    "metadata": {
-        "website": "https://vexcoin.github.io",
-        "description": "VEX Coin is a decentralized cryptocurrency powering the VEX blockchain.",
-        "algorithm": "Proof of Stake",
-        "network": "mainnet"
-    }
-}
-
-foundation_address = "0x0000000000000000000000000000000000000001"
-ecosystem_address = "0x0000000000000000000000000000000000000002"
-public_sale_address = "0x0000000000000000000000000000000000000003"
-
-foundation_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["foundation"]
-ecosystem_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["ecosystem"]
-public_sale_amount = VEX_CONFIG["total_supply"] * VEX_CONFIG["initial_distribution"]["public_sale"]
 
 class Blockchain:
     def __init__(self, difficulty: int = 4):

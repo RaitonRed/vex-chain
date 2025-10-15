@@ -4,6 +4,7 @@ from src.blockchain.chain import Blockchain
 from src.blockchain.transaction import Transaction
 from src.blockchain.db.repositories import BlockRepository
 from src.utils.logger import logger
+from src.blockchain.vex_config import *
 from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.consensus.validator_registry import ValidatorRegistry
 from src.blockchain.db.state_db import StateDB
@@ -13,17 +14,6 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.primitives.asymmetric import ec
 import time
 import random
-
-VEX_CONFIG = {
-    "name": "VEX",
-    "symbol": "VEX",
-    "decimals": 18,
-    "total_supply": 2_000_000_000 * 10**0,
-    "block_reward": 50 * 10**18,  # 50 VEX per block
-    "foundation_address": "0x0000000000000000000000000000000000000001",
-    "ecosystem_address": "0x0000000000000000000000000000000000000002",
-    "public_sale_address": "0x0000000000000000000000000000000000000003"
-}
 
 # Create Flask app instance
 app = Flask(__name__)
