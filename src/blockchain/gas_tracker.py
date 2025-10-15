@@ -1,6 +1,6 @@
 class GasTracker:
-    """سیستم ردیابی و مدیریت مصرف گاز در اجرای قراردادهای هوشمند"""
-    
+    """Gas consumption tracking and management system in the implementation of smart contracts"""
+
     def __init__(self):
         self.remaining_gas = 0
         self.total_used = 0
@@ -28,32 +28,27 @@ class GasTracker:
             'SHA3': 30,
             'REVERT': 0
         }
-    
+
     def initialize(self, gas_limit: int):
-        """مقدار اولیه گاز را تنظیم می‌کند"""
         self.remaining_gas = gas_limit
         self.total_used = 0
-    
+
     def consume(self, opcode: str) -> bool:
-        """مصرف گاز برای یک عملیات خاص"""
-        cost = self.gas_costs.get(opcode, 10)  # مقدار پیش‌فرض 10
-        
+        cost = self.gas_costs.get(opcode, 10)
+
         if self.remaining_gas < cost:
-            return False  # گاز کافی نیست
-        
+            return False
+
         self.remaining_gas -= cost
         self.total_used += cost
         return True
-    
+
     def refund(self, amount: int):
-        """بازگرداندن گاز استفاده شده"""
         self.remaining_gas += amount
         self.total_used -= amount
-    
+
     def get_remaining(self) -> int:
-        """دریافت مقدار گاز باقیمانده"""
         return self.remaining_gas
-    
+
     def get_used(self) -> int:
-        """دریافت مقدار گاز مصرف شده"""
         return self.total_used

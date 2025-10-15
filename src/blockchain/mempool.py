@@ -19,21 +19,20 @@ class Mempool:
         self.max_size = 1000
         self.p2p_network = P2PNetwork
 
-        # بارگذاری فقط در صورتی که جدول mempool وجود دارد
+        # Load only if mempool table exists
         try:
             self._load_from_db()
         except sqlite3.OperationalError:
             logger.warning("Mempool table not found, starting with empty mempool")
 
     def _load_from_db(self):
-        """بارگذاری تراکنش‌ها فقط اگر جدول وجود دارد"""
+        """load transactions from database"""
         with db_connection() as conn:
             cursor = conn.cursor()
-            # بررسی وجود جدول mempool
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='mempool'")
             if not cursor.fetchone():
                 return
-                
+
             cursor.execute('SELECT * FROM mempool')
 
     def add_transaction(self, transaction):
@@ -43,31 +42,30 @@ class Mempool:
             if not transaction.is_valid():
                 logger.error("Invalid transaction")
                 return False
-                
+
             # Check if transaction already exists
             if transaction.tx_hash in self.transactions:
                 logger.warning("Transaction already in mempool")
                 return False
-                
+
             # Add to mempool
             self.transactions[transaction.tx_hash] = transaction
             logger.info(f"Transaction added to mempool: {transaction.tx_hash[:8]}...")
-            
+
             # Broadcast to network
             if self.p2p_network:
                 try:
                     self.p2p_network.broadcast_transaction(transaction)
                 except Exception as e:
                     logger.error(f"Failed to broadcast transaction: {e}")
-                    
+
             return True
         except Exception as e:
             logger.error(f"Error adding transaction to mempool: {e}")
             return False
 
     def get_transactions(self, max_count: int = 10) -> List[Transaction]:
-        """دریافت تراکنش‌ها برای ساخت بلاک جدید"""
-        # اولویت‌بندی بر اساس کارمزد یا timestamp
+        """fetch transactions for creating new block"""
         sorted_txs = sorted(
             self.transactions.values(),
             key=lambda tx: tx.timestamp
@@ -75,22 +73,20 @@ class Mempool:
         return sorted_txs[:max_count]
 
     def remove_transactions(self, tx_hashes: List[str]):
-        """حذف تراکنش‌های تایید شده از mempool"""
+        """remove validated transactions"""
         with db_connection() as conn:
             cursor = conn.cursor()
             for tx_hash in tx_hashes:
-                # حذف از حافظه
                 if tx_hash in self.transactions:
                     del self.transactions[tx_hash]
-                
-                # حذف از دیتابیس
+
                 cursor.execute('DELETE FROM mempool WHERE tx_hash = ?', (tx_hash,))
             conn.commit()
-        
+
         logger.info(f"Removed {len(tx_hashes)} transactions from mempool")
 
     def clear_expired(self, expiry_seconds: int = 3600):
-        """پاک‌سازی تراکنش‌های منقضی شده"""
+        """clear expired transactions"""
         now = time.time()
         while self.expiration and self.expiration_queue[0][0] < now:
             _, tx = heapq.heappop(self.expiration_queue)
@@ -100,37 +96,33 @@ class Mempool:
 
 
     def _validate_transaction(self, tx):
-        
+
         last_nonce = StateDB().get_nonce(tx.sender)
 
         # Check nonce
         if tx.nonce <= last_nonce:
             logger.error(f"Invalid nonce for {tx.sender}: {tx.nonce} <= {last_nonce}")
             return False
-        
-        # 1. بررسی امضا
+
         if not tx.is_valid():
             logger.error(f"Invalid signature for tx: {tx.tx_hash[:8]}")
             return False
-            
-        # 2. بررسی موجودی
+
         state_db = StateDB()
         sender_balance = state_db.get_balance(tx.sender)
         required_amount = tx.amount + getattr(tx, 'fee', 0)
-        
+
         if sender_balance < required_amount:
             logger.error(f"Insufficient balance for {tx.sender}")
             return False
-            
-        # 3. بررسی تکراری نبودن
+
         if tx.tx_hash in self.transactions:
             logger.warning(f"Duplicate transaction: {tx.tx_hash[:8]}")
             return False
-            
-        # 4. اعتبارسنجی قرارداد (اگر وجود دارد)
+
         if hasattr(tx, 'contract_address') and tx.contract_address:
             if not ContractRepository.contract_exists(tx.contract_address):
                 logger.error(f"Invalid contract: {tx.contract_address[:8]}")
                 return False
-                
+
         return True

@@ -18,7 +18,7 @@ class Transaction:
     sender: str
     recipient: str
     amount: float
-    
+
     # Fields with defaults come after
     data: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
@@ -37,7 +37,7 @@ class Transaction:
     chain_id: int = field(default=1)
 
     def __post_init__(self):
-        # حالت خاص برای تراکنش‌های سیستمی
+        # Special mode for system transactions
         if self.sender == "0x0000000000000000000000000000000000000000":
             self.nonce = 0
         elif self.nonce is None:
@@ -45,11 +45,11 @@ class Transaction:
                 self.nonce = StateDB().get_nonce(self.sender) + 1
             except:
                 self.nonce = 0
-        
-        # محاسبه هش باید بعد از تنظیم تمام فیلدها انجام شود
+
+        # The hash calculation should be done after all fields are set.
         self.tx_hash = self.calculate_hash()
-        
-        # بررسی تطابق هش
+
+        # Check hash match
         if hasattr(self, 'tx_hash') and self.tx_hash:
             calculated_hash = self.calculate_hash()
             if self.tx_hash != calculated_hash:
@@ -96,48 +96,48 @@ class Transaction:
     def sign(self, private_key) -> None:
         """Improved signing method"""
         from cryptography.hazmat.primitives import serialization
-        
+
         if isinstance(private_key, str):
             private_key = serialization.load_pem_private_key(
                 private_key.encode('utf-8'),
                 password=None,
                 backend=default_backend()
             )
-        
-        # اطمینان از محاسبه هش قبل از امضا
+
+        # Ensuring hash calculation before signing
         if not hasattr(self, 'tx_hash') or not self.tx_hash:
             self.tx_hash = self.calculate_hash()
-        
+
         signature = private_key.sign(
             self.tx_hash.encode(),
             ec.ECDSA(hashes.SHA256())
         )
-        self.signature = signature.hex()  # ذخیره به صورت hex string
+        self.signature = signature.hex()  # Save as hex string
 
     def is_valid(self) -> bool:
         """Enhanced validation with proper signature verification"""
         if not all([self.sender, self.recipient, self.tx_hash]):
             return False
-            
+
         if self.amount < 0:
             return False
-            
+
         if self.tx_hash != self.calculate_hash():
             return False
-            
-        # دریافت کلید عمومی از دیتابیس
+
+        # Get public key from database
         public_key_pem = ValidatorRegistry.get_public_key_pem(self.sender)
         if not public_key_pem:
             return False
-        
+
         try:
             from cryptography.hazmat.primitives.serialization import load_pem_public_key
             public_key = load_pem_public_key(public_key_pem.encode())
-            
-            # تبدیل امضا از فرمت hex به bytes
+
+            # Convert signature from hex to bytes format
             signature_bytes = bytes.fromhex(self.signature)
-            
-            # بررسی امضا
+
+            # Signature check
             public_key.verify(
                 signature_bytes,
                 self.tx_hash.encode(),

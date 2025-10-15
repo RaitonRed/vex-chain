@@ -1,4 +1,5 @@
 import json
+import time
 from typing import List, Optional
 from src.blockchain.consensus.stake_manager import StakeManager
 from src.blockchain.block import Block
@@ -11,7 +12,6 @@ from src.blockchain.db.state_db import StateDB
 from src.utils.logger import logger
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
-import time
 from src.blockchain.block import Block
 from src.utils.database import db_connection
 from src.utils.cache import LRUCache
@@ -131,11 +131,9 @@ class Blockchain:
         self.p2p_network = p2p_network
 
     def _initialize_new_chain(self):
-        """مقداردهی اولیه یک زنجیره جدید بدون ریست دیتابیس"""
         logger.info("Initializing new blockchain")
         try:
             self._initialize_special_accounts()
-            # ایجاد بلاک جنسیس
             genesis_block = self._create_genesis_block()
             self.chain = [genesis_block]
             logger.info("New blockchain initialized successfully")
@@ -287,7 +285,6 @@ class Blockchain:
             raise RuntimeError(f"Genesis block creation failed: {e}") from e
 
     def load_chain(self) -> List[Block]:
-        """بارگذاری زنجیره از دیتابیس"""
         chain = []
         block_count = BlockRepository.get_block_count()
 
@@ -299,7 +296,6 @@ class Blockchain:
 
             chain.append(block)
 
-        # اعتبارسنجی زنجیره بارگذاری شده
         if not chain or not Consensus.is_chain_valid(chain):
             logger.error("Loaded chain is invalid")
             return []
@@ -470,23 +466,19 @@ class Blockchain:
         state_db.update_balance(block.validator, balance)
 
     def _add_external_block(self, block: Block) -> Optional[Block]:
-        """اضافه کردن بلاک دریافتی از شبکه"""
         last_block = self.get_last_block()
         if not last_block:
             logger.error("Cannot add external block: no last block")
             return None
 
-        # اعتبارسنجی ساختار بلاک
         if not block.is_valid(last_block):
             logger.error(f"Invalid external block received: {block.hash}")
             return None
 
-        # اعتبارسنجی امضای بلاک
         if not block.verify_signature():
             logger.error(f"Invalid signature for external block: {block.hash}")
             return None
 
-        # اعتبارسنجی تراکنش‌ها
         for tx in block.transactions:
                 sender_nonce = StateDB().get_nonce(tx.sender)
                 if tx.nonce != sender_nonce + 1:
@@ -497,7 +489,6 @@ class Blockchain:
                     logger.error(f"Invalid transaction in external block: {tx.tx_hash}")
                     return None
 
-                # بررسی اینکه فرستنده موجودی کافی دارد
                 if tx.contract_type == "NORMAL":
                     sender_balance = StateDB().get_balance(tx.sender)
                     if sender_balance < tx.amount:
@@ -505,7 +496,6 @@ class Blockchain:
                         return None
 
 
-        # اجرای قراردادهای هوشمند در بلاک دریافتی
         vm = SmartContractVM(StateDB())
         for tx in block.transactions:
             sender_nonce = StateDB().get_nonce(tx.sender)
@@ -528,12 +518,9 @@ class Blockchain:
                 else:
                     logger.error(f"Contract execution failed: {result}")
                     # در یک پیاده‌سازی واقعی، ممکن است بخواهید بلاک را رد کنید
-                    # اما در اینجا فقط خطا را ثبت می‌کنیم
 
-        # افزودن بلاک به زنجیره
         self.chain.append(block)
 
-        # ذخیره در دیتابیس
         try:
             block_id = BlockRepository.save_block(block)
             TransactionRepository.save_transactions_bulk(block.transactions, block_id)
@@ -541,31 +528,23 @@ class Blockchain:
             return block
         except Exception as e:
             logger.error(f"Failed to save external block: {e}")
-            # حذف بلاک از زنجیره اگر ذخیره‌سازی ناموفق بود
             self.chain.pop()
             return None
 
     def get_last_block(self) -> Optional[Block]:
-        """دریافت آخرین بلاک زنجیره"""
         if not self.chain:
             return None
         return self.chain[-1]
 
     def is_chain_valid(self) -> bool:
-        """اعتبارسنجی زنجیره فعلی"""
         return Consensus.is_chain_valid(self.chain)
 
     def resolve_conflicts(self, nodes: List[str]) -> bool:
-        """حل تعارضات با نودهای دیگر (طولانی‌ترین زنجیره معتبر)"""
         logger.info("Resolving conflicts with network nodes...")
 
         new_chain = None
         max_cumulative_diff = Consensus.cumulative_difficulty(self.chain)
 
-        # در اینجا معمولاً با نودهای دیگر ارتباط برقرار می‌کنیم
-        # برای سادگی، فرض می‌کنیم زنجیره‌های دیگر را دریافت کرده‌ایم
-
-        # اگر زنجیره جدیدی با سختی تجمعی بیشتر پیدا شد
         if new_chain and Consensus.is_chain_valid(new_chain):
             if Consensus.cumulative_difficulty(new_chain) > max_cumulative_diff:
                 self.chain = new_chain
@@ -576,11 +555,9 @@ class Blockchain:
         return False
 
     def get_blocks_paginated(self, page: int = 1, per_page: int = 10) -> List[Block]:
-        """دریافت بلاک‌ها به صورت صفحه‌بندی شده"""
         return BlockRepository.get_blocks_paginated(page, per_page)
 
     def _save_pending_block(self, block):
-        # ذخیره بلوک در صف انتظار برای انتشار مجدد
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -592,7 +569,6 @@ class Blockchain:
     def _create_new_block(self, transactions: List[Transaction],
                  validator_private_key: ec.EllipticCurvePrivateKey,
                  selected_validator_address: str = None) -> Optional[Block]:
-        """ایجاد و افزودن بلاک جدید محلی"""
 
         # Get Our Node's Address
         our_address = ValidatorRegistry.get_validator_address(validator_private_key)
@@ -611,7 +587,6 @@ class Blockchain:
             logger.error("Chain not initialized")
             return None
 
-        # اجرای قراردادهای هوشمند
         vm = SmartContractVM(StateDB())
         successful_txs = []
         for tx in transactions:
@@ -635,12 +610,10 @@ class Blockchain:
             logger.warning("No valid transactions to include in block")
             return None
 
-        # استفاده از ولیدیتور انتخاب شده یا محاسبه جدید
         if selected_validator_address:
             validator_address = selected_validator_address
             stake = ValidatorRegistry.get_validator_stake(validator_address)
         else:
-            # روش قدیمی - محاسبه از کلید خصوصی
             validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
             stake = ValidatorRegistry.get_validator_stake(validator_address)
 
@@ -648,7 +621,6 @@ class Blockchain:
             logger.error(f"Validator {validator_address} has no stake or not registered in DB")
             return None
 
-        # ایجاد بلاک جدید
         new_block = Block(
             index=last_block.index + 1,
             timestamp=int(time.time()),
@@ -659,10 +631,8 @@ class Blockchain:
             difficulty=self.difficulty
         )
 
-        # امضای بلاک
         new_block.sign_block(validator_private_key, stake)
 
-        # ذخیره در دیتابیس
         try:
             block_id = BlockRepository.save_block(new_block)
             TransactionRepository.save_transactions_bulk(successful_txs, block_id)
@@ -670,7 +640,6 @@ class Blockchain:
 
             logger.info(f"Block #{new_block.index} added to chain: {new_block.hash[:10]}...")
 
-            # انتشار بلاک در شبکه
             if hasattr(self, 'p2p_network') and self.p2p_network:
                 try:
                     self.p2p_network.broadcast_block(new_block)
@@ -682,7 +651,6 @@ class Blockchain:
 
         except Exception as e:
             logger.error(f"Failed to save block: {e}")
-            # حذف بلاک از زنجیره اگر ذخیره‌سازی ناموفق بود
             if new_block in self.chain:
                 self.chain.remove(new_block)
             return None

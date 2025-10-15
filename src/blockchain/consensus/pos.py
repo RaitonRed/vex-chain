@@ -11,9 +11,9 @@ class VRF:
         signature = self.private_key.sign(
             seed,
             ec.ECDSA(hashes.SHA256()))
-        
+
         return signature
-    
+
     @staticmethod
     def verify(public_key, seed, signature):
         # Verify VRF proof
@@ -30,13 +30,11 @@ class ProofOfStake:
     def __init__(self):
         self.validators = {}
         self.staking_contract = "0xStakingContract"
-    
+
     def add_validator(self, address: str, stake: float):
-        """ثبت ولیدیتور جدید با مقدار سهام"""
         self.validators[address] = stake
-    
+
     def select_validator(self, seed):
-        """انتخاب تصادفی ولیدیتور با وزن سهام"""
 
         # Calculate validator weights based on their stake
         total_stake = sum(self.validators.values())
@@ -51,9 +49,8 @@ class ProofOfStake:
             current_sum += stake
             if current_sum >= random_value:
                 return address, proof
-            
+
         return None
 
     def validate_block(self, block: Block, validator: str) -> bool:
-        """اعتبارسنجی بلاک توسط ولیدیتور"""
         return block.validator == validator and Block.verify_signature(block.signature)

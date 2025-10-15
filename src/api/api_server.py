@@ -33,7 +33,7 @@ def home():
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-        
+
     blockchain = node.blockchain
     return jsonify({
         'status': 'running',
@@ -47,7 +47,7 @@ def health_check():
     node = current_app.config.get('node')
     if not node:
         return jsonify({"status": "NOT READY"}), 503
-    
+
     status = "READY" if node.is_ready() else "NOT READY"
     return jsonify({
         "status": status,
@@ -100,11 +100,11 @@ def get_blocks():
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-        
+
     blockchain = node.blockchain
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
-    
+
     blocks = blockchain.get_blocks_paginated(page, per_page)
     return jsonify({
         'blocks': [{
@@ -121,17 +121,17 @@ def get_block(index: int):
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-        
+
     blockchain = node.blockchain
     block = BlockRepository.get_block_by_index(index)
     if not block:
         return jsonify({'error': 'Block not found'}), 404
-        
+
     # Calculate block reward (VEX minted in this block)
     block_reward = VEX_CONFIG["block_reward"]
     transaction_fees = sum(getattr(tx, 'fee', 0) for tx in block.transactions)
     total_reward = block_reward + transaction_fees
-        
+
     return jsonify({
         'index': block.index,
         'hash': block.hash,
@@ -236,27 +236,23 @@ def stake_coins():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    # دریافت تراکنش استیک از کاربر (امضا شده)
     tx_data = data.get('transaction')
     if not tx_data:
         return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        # ایجاد تراکنش از داده‌های دریافتی
         tx = Transaction(
             sender=tx_data.get('sender'),
-            recipient=tx_data.get('recipient'),  # قرارداد استیک یا آدرس خاص
+            recipient=tx_data.get('recipient'),
             amount=tx_data.get('amount'),
             data=tx_data.get('data', {}),
             signature=tx_data.get('signature'),
             nonce=tx_data.get('nonce')
         )
 
-        # بررسی اعتبار تراکنش
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
 
-        # اضافه کردن تراکنش به mempool
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
                 node.p2p_network.broadcast_transaction(tx)
@@ -280,16 +276,14 @@ def unstake_coins():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    # دریافت تراکنش unstake از کاربر (امضا شده)
     tx_data = data.get('transaction')
     if not tx_data:
         return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        # ایجاد تراکنش از داده‌های دریافتی
         tx = Transaction(
             sender=tx_data.get('sender'),
-            recipient=tx_data.get('recipient'),  # معمولاً آدرس قرارداد unstake یا آدرس خاص
+            recipient=tx_data.get('recipient'),
             amount=tx_data.get('amount'),
             data={
                 'type': 'unstake',
@@ -300,20 +294,16 @@ def unstake_coins():
             nonce=tx_data.get('nonce')
         )
 
-        # بررسی اعتبار تراکنش
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
 
-        # اعتبارسنجی اضافی برای تراکنش unstake
         if tx.data.get('type') != 'unstake':
             return jsonify({'error': 'Transaction is not an unstake operation'}), 400
 
-        # بررسی موجودی سهام
         stake_amount = StakeManager.get_stake_amount(tx.sender)
         if stake_amount < tx.amount:
             return jsonify({'error': f'Insufficient stake balance: {stake_amount}'}), 400
 
-        # اضافه کردن تراکنش به mempool
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
                 node.p2p_network.broadcast_transaction(tx)
@@ -328,7 +318,7 @@ def unstake_coins():
     except Exception as e:
         logger.error(f"Unstake error: {str(e)}")
         return jsonify({'error': f'Unstake failed: {str(e)}'}), 500
-    
+
 @app.route('/stake/<address>', methods=['GET'])
 def get_stake_info(address):
     node = current_app.config.get('node')
@@ -339,12 +329,12 @@ def get_stake_info(address):
                 'error': 'Node Not initialized'
             }
         ), 500
-    
+
     try:
         stake_amount = StakeManager.get_stake_amount(address)
         is_validator = ValidatorRegistry.is_validator(address)
         validator_info = ValidatorRegistry.get_validator_info(address) if is_validator else None
-        
+
         return jsonify({
             'status': 'success',
             'address': address,
@@ -353,8 +343,8 @@ def get_stake_info(address):
             'validator_info': validator_info
         }), 200
     except Exception as e:
-        return jsonify({'error': f'Failed to get stake info: {str(e)}'}), 500  
-    
+        return jsonify({'error': f'Failed to get stake info: {str(e)}'}), 500
+
 @app.route('/stake/<address>/transactions', methods=['GET'])
 def get_stake_transactions(address):
     node = current_app.config.get('node')
@@ -364,7 +354,7 @@ def get_stake_transactions(address):
     try:
         staking_txs = StakeManager.get_staking_transactions(address)
         unstaking_txs = StakeManager.get_unstaking_transactions(address)
-        
+
         return jsonify({
             'status': 'success',
             'address': address,
@@ -392,7 +382,6 @@ def mine_block_post():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    # دریافت کلید خصوصی از کاربر
     private_key_pem = data.get('private_key')
     if not private_key_pem:
         return jsonify({'error': 'Private key is required for mining'}), 400
@@ -404,7 +393,7 @@ def mine_block_post():
         )
 
         validator_address = ValidatorRegistry.get_validator_address(validator_private_key)
-        
+
         stake = ValidatorRegistry.get_validator_stake(validator_address)
         if stake <= 0:
             return jsonify({'error': 'Validator has no stake or not registered'}), 400
@@ -414,8 +403,8 @@ def mine_block_post():
             return jsonify({'error': 'No transactions in the mempool'}), 400
 
         new_block = node.blockchain._create_new_block(
-            transactions, 
-            validator_private_key, 
+            transactions,
+            validator_private_key,
             validator_address
         )
 
@@ -442,11 +431,11 @@ def add_transaction():
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-        
+
     data = request.json
     if not data:
         return jsonify({'error': 'No data provided'}), 400
-        
+
     try:
         tx_data = {
             'sender': data.get('sender'),
@@ -456,28 +445,28 @@ def add_transaction():
             'signature': data.get('signature'),
             'nonce': data.get('nonce')
         }
-        
+
         # Add VEX info to transaction data if not already present
         if 'type' not in tx_data['data']:
             tx_data['data']['type'] = 'vex_transfer'
             tx_data['data']['symbol'] = VEX_CONFIG["symbol"]
-        
+
         tx = Transaction(**tx_data)
-        
+
         # Validate transaction
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
-        
+
         # Check if sender has enough VEX for regular transfers
         if tx.data.get('type') == 'vex_transfer':
             sender_balance = StateDB().get_balance(tx.sender)
             total_cost = tx.amount + getattr(tx, 'fee', 0)
-            
+
             if sender_balance < total_cost:
                 return jsonify({
                     'error': f'Insufficient VEX balance. Available: {sender_balance}, Required: {total_cost}'
                 }), 400
-        
+
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
                 node.p2p_network.broadcast_transaction(tx)
@@ -488,11 +477,11 @@ def add_transaction():
             }), 201
         else:
             return jsonify({'error': 'Failed to add transaction to mempool'}), 400
-            
+
     except Exception as e:
         logger.error(f"Transaction error: {str(e)}")
         return jsonify({'error': str(e)}), 400
-    
+
 @app.route('/contracts/deploy', methods=['POST'])
 def deploy_contract():
     node = current_app.config.get('node')
@@ -525,13 +514,11 @@ def call_contract():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    # دریافت تراکنش از پیش امضا شده
     tx_data = data.get('transaction')
     if not tx_data:
         return jsonify({'error': 'No transaction provided'}), 400
 
     try:
-        # ایجاد تراکنش از داده‌های دریافتی
         tx = ContractTransaction(
             sender=tx_data.get('sender'),
             recipient=tx_data.get('recipient'),
@@ -544,7 +531,6 @@ def call_contract():
             nonce=tx_data.get('nonce')
         )
 
-        # بررسی اعتبار تراکنش
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
 
@@ -581,24 +567,24 @@ def create_account():
 
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-    
+
     data = request.json
     account_name = data.get('account_name')
     password = data.get('password')
 
     if not account_name or not password:
         return jsonify({'error': 'Missing account_name or password'}), 400
-    
+
     try:
         address, private_key = node.wallet.create_account(account_name, password)
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'address': address,
             'private_key': private_key
         }), 201
     except Exception as e:
         return jsonify({'error': f'Failed to create account: {str(e)}'}), 500
-    
+
 @app.route('/accounts/import', methods=['POST'])
 def import_account():
     node = current_app.config.get('node')
@@ -616,7 +602,7 @@ def import_account():
     try:
         address = node.wallet.import_private_key(account_name, private_key, password)
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'address': address,
             'message': 'Account imported successfully'
         }), 201
@@ -698,7 +684,7 @@ def get_account_nonce(address):
         }), 200
     except Exception as e:
         return jsonify({'error': f'Failed to get nonce: {str(e)}'}), 500
-    
+
 @app.route('/accounts/<address>', methods=['GET'])
 def get_account_info(address):
     node = current_app.config.get('node')
@@ -710,7 +696,7 @@ def get_account_info(address):
         nonce = StateDB().get_nonce(address)
         stake_amount = StakeManager.get_stake_amount(address)
         is_validator = ValidatorRegistry.is_validator(address)
-        
+
         return jsonify({
             'status': 'success',
             'address': address,
@@ -741,14 +727,14 @@ def get_accounts():
                 'balance': balance,
                 'currency': VEX_CONFIG["symbol"]
             })
-        
+
         return jsonify({
             'status': 'success',
             'accounts': accounts
         }), 200
     except Exception as e:
         return jsonify({'error': f'Failed to get accounts: {str(e)}'}), 500
-    
+
 # Check later
 # @app.route('/accounts/export/<account_name>', methods=['POST'])
 # def export_account(account_name):
@@ -777,112 +763,6 @@ def get_accounts():
 #     except Exception as e:
 #         return jsonify({'error': f'Failed to export account: {str(e)}'}), 500
 
-@app.route('/settings/mempool_limit', methods=['POST'])
-def set_mempool_limit():
-    node = current_app.config.get('node')
-    if not node:
-        return jsonify({'error': 'Node not initialized'}), 500
-
-    data = request.json
-    new_limit = data.get('new_limit')
-
-    if not new_limit:
-        return jsonify({'error': 'Missing new_limit'}), 400
-
-    try:
-        node.mempool.max_size = new_limit
-        return jsonify({'status': 'success', 'message': f'Mempool limit set to {new_limit}'}), 200
-    except Exception as e:
-        return jsonify({'error': f'Failed to set mempool limit: {str(e)}'}), 500
-
-@app.route('/settings/min_stake', methods=['POST'])
-def set_min_stake():
-    data = request.json
-    amount = data.get('amount')
-
-    if not amount:
-        return jsonify({'error': 'Missing amount'}), 400
-
-    try:
-        ValidatorRegistry.MIN_STAKE = amount
-        return jsonify({'status': 'success', 'message': f'Minimum stake set to {amount}'}), 200
-    except Exception as e:
-        return jsonify({'error': f'Failed to set minimum stake: {str(e)}'}), 500
-
-@app.route('/settings/block_interval', methods=['POST'])
-def set_block_interval():
-    data = request.json
-    seconds = data.get('seconds')
-
-    if not seconds:
-        return jsonify({'error': 'Missing seconds'}), 400
-
-    try:
-        Consensus.BLOCK_INTERVAL = seconds
-        return jsonify({'status': 'success', 'message': f'Block interval set to {seconds} seconds'}), 200
-    except Exception as e:
-        return jsonify({'error': f'Failed to set block interval: {str(e)}'}), 500
-
-@app.route('/test/validator', methods=['POST'])
-def create_test_validator():
-    try:
-        from cryptography.hazmat.primitives import serialization
-        
-        validator_key = ec.generate_private_key(ec.SECP256K1())
-        public_key_pem = validator_key.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ).decode()
-        
-        validator_address = ValidatorRegistry.get_validator_address(validator_key)
-        
-        ValidatorRegistry.register_validator(
-            address=validator_address,
-            public_key_pem=public_key_pem,
-            stake=10000
-        )
-        return jsonify({'status': 'success', 'validator_address': validator_address}), 201
-    
-    except Exception as e:
-        return jsonify({'error': f'Failed to create test validator: {str(e)}'}), 500
-
-@app.route('/test/transaction', methods=['POST'])
-def create_test_transaction():
-    node = current_app.config.get('node')
-    if not node:
-        return jsonify({'error': 'Node not initialized'}), 500
-
-    data = request.json
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-
-    # دریافت تراکنش از پیش امضا شده
-    tx_data = data.get('transaction')
-    if not tx_data:
-        return jsonify({'error': 'No transaction provided'}), 400
-
-    try:
-        # ایجاد تراکنش از داده‌های دریافتی
-        tx = Transaction(
-            sender=tx_data.get('sender'),
-            recipient=tx_data.get('recipient'),
-            amount=tx_data.get('amount'),
-            data=tx_data.get('data', {}),
-            signature=tx_data.get('signature'),
-            nonce=tx_data.get('nonce')
-        )
-
-        # بررسی اعتبار تراکنش
-        if not tx.is_valid():
-            return jsonify({'error': 'Invalid transaction signature'}), 400
-
-        if node.mempool.add_transaction(tx):
-            return jsonify({'status': 'success', 'tx_hash': tx.tx_hash}), 201
-        else:
-            return jsonify({'error': 'Failed to add transaction to mempool'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Failed to create test transaction: {str(e)}'}), 500
-
 # Security Issue
 # @app.route('/shutdown', methods=['POST'])
 # def shutdown_node():
@@ -902,11 +782,11 @@ def get_vex_supply():
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-    
+
     # Calculate circulating supply (total supply minus unclaimed rewards)
     total_supply = VEX_CONFIG["total_supply"]
     # In a real implementation, you'd subtract unclaimed rewards from total supply
-    
+
     return jsonify({
         'total_supply': total_supply,
         'circulating_supply': total_supply,  # Simplified for now
@@ -930,18 +810,18 @@ def get_vex_balance(address):
         }), 200
     except Exception as e:
         return jsonify({'error': f'Failed to get VEX balance: {str(e)}'}), 500
-    
+
 @app.route('/vex/transfer', methods=['POST'])
 def transfer_vex():
     """Transfer VEX coins between accounts"""
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-        
+
     data = request.json
     if not data:
         return jsonify({'error': 'No data provided'}), 400
-        
+
     try:
         # Create VEX transfer transaction
         tx = Transaction(
@@ -956,20 +836,20 @@ def transfer_vex():
             signature=data.get('signature'),
             nonce=data.get('nonce')
         )
-        
+
         # Validate transaction
         if not tx.is_valid():
             return jsonify({'error': 'Invalid transaction signature'}), 400
-        
+
         # Check if sender has enough VEX
         sender_balance = StateDB().get_balance(tx.sender)
         total_cost = tx.amount + getattr(tx, 'fee', 0)
-        
+
         if sender_balance < total_cost:
             return jsonify({
                 'error': f'Insufficient VEX balance. Available: {sender_balance}, Required: {total_cost}'
             }), 400
-        
+
         # Add to mempool
         if node.mempool.add_transaction(tx):
             if node.p2p_network:
@@ -981,33 +861,33 @@ def transfer_vex():
             }), 201
         else:
             return jsonify({'error': 'Failed to add transaction to mempool'}), 400
-            
+
     except Exception as e:
         logger.error(f"VEX transfer error: {str(e)}")
         return jsonify({'error': str(e)}), 400
-    
+
 @app.route('/vex/rewards/<validator_address>', methods=['GET'])
 def get_vex_rewards(validator_address):
     """Get VEX rewards for a validator"""
     node = current_app.config.get('node')
     if not node:
         return jsonify({'error': 'Node not initialized'}), 500
-    
+
     try:
         # Calculate total rewards earned by validator
         total_rewards = 0
         last_block = node.blockchain.get_last_block()
-        
+
         if last_block:
             # In a real implementation, you'd sum up all block rewards for this validator
             # This is a simplified version
             validator_blocks = [b for b in node.blockchain.chain if b.validator == validator_address]
             total_rewards = len(validator_blocks) * VEX_CONFIG["block_reward"]
-            
+
             # Add transaction fees from validated blocks
             for block in validator_blocks:
                 total_rewards += sum(getattr(tx, 'fee', 0) for tx in block.transactions)
-        
+
         return jsonify({
             'status': 'success',
             'validator': validator_address,

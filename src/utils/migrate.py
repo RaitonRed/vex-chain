@@ -2,7 +2,6 @@ from src.utils.database import init_db
 from src.utils.logger import logger
 
 def run_migrations():
-    """اجرای تمام مهاجرت‌های دیتابیس"""
     logger.info("Running database migrations...")
     try:
         init_db()

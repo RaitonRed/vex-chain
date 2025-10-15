@@ -17,7 +17,7 @@ class BlockchainNode:
         self.host = host
         self.p2p_port = p2p_port
         self.api_port = api_port
-        
+
         # Initialize core modules first
         self.blockchain = Blockchain()
         self.mempool = Mempool()
@@ -109,10 +109,10 @@ class BlockchainNode:
 
         address = node_account['address']
         public_key_pem = node_account['public_key']
-        
+
         # Auto-stake a fixed amount (e.g., 1000 coins)
         stake_amount = 1000.0
-        
+
         # Check if already registered
         existing_stake = StakeManager.get_validator_stake(address)
         if existing_stake > 0:
@@ -122,8 +122,8 @@ class BlockchainNode:
         # Register validator
         try:
             tx_id = StakeManager.stake(
-                address, 
-                stake_amount, 
+                address,
+                stake_amount,
                 public_key_pem
             )
             if tx_id:
@@ -135,10 +135,10 @@ class BlockchainNode:
 
     def _start_api_service(self):
         try:
-            # تنظیم نمونه node در برنامه Flask
+            # Setting up the node instance in the Flask application
             flask_app.config['node'] = self
-            
-            # ایجاد thread برای سرویس API
+
+            # Creating a thread for the API service
             self.api_thread = threading.Thread(
                 target=self._run_api_service,
                 daemon=True,
@@ -153,16 +153,16 @@ class BlockchainNode:
     def _run_api_service(self):
         try:
             logger.info(f"Starting API server on {self.host}:{self.api_port}")
-            
-            # استفاده از سرور Waitress اگر نصب شده باشد
+
+            # Use Waitress server if installed
             try:
                 from waitress import serve
                 serve(flask_app, host=self.host, port=self.api_port)
                 return
             except ImportError:
                 logger.warning("Waitress not installed, using Flask development server")
-            
-            # استفاده از سرور توسعه‌دهی Flask
+
+            # Using the Flask development server
             flask_app.run(
                 host=self.host,
                 port=self.api_port,
@@ -190,11 +190,11 @@ class BlockchainNode:
         try:
             if self.p2p_port < 1024 and os.geteuid() != 0:
                 raise PermissionError(f"Port {self.p2p_port} requires root privileges")
-            
+
             logger.info("initializing database...")
             init_db()
 
-            # راه‌اندازی ماژول‌ها
+            # Launching modules
             for name, module in self.modules.items():
                 if hasattr(module, 'initialize'):
                     logger.info(f"Initializing {name} module...")
@@ -225,7 +225,7 @@ class BlockchainNode:
         if self.p2p_network is None:
             logger.error("Cannot start P2P service: p2p_network is None")
             return
-            
+
         self.p2p_thread = threading.Thread(
             target=self._run_p2p_service,
             daemon=True
@@ -234,7 +234,7 @@ class BlockchainNode:
 
     def _run_p2p_service(self):
         try:
-            # بررسی وجود p2p_network قبل از فراخوانی
+            # Checking for the existence of p2p_network before calling
             if self.p2p_network:
                 self.p2p_network.listen_for_peers()
                 logger.info("P2P service started successfully")
@@ -277,13 +277,13 @@ class BlockchainNode:
         while self._running:
             try:
                 time.sleep(2)
-                
+
                 blockchain_ok = self._check_blockchain()
                 p2p_ok = self._check_p2p()
                 api_ok = self._check_api()
-                
+
                 services_ready = all([blockchain_ok, p2p_ok, api_ok])
-                
+
                 if services_ready:
                     self._services_ready.set()
                     # logger.info("✅ All services are ready")
@@ -293,7 +293,7 @@ class BlockchainNode:
                                   f"Blockchain: {blockchain_ok}, "
                                   f"P2P: {p2p_ok}, "
                                   f"API: {api_ok}")
-                    
+
                 time.sleep(3)
             except Exception as e:
                 logger.error(f"Monitoring failed: {e}")
@@ -309,7 +309,7 @@ class BlockchainNode:
         return self.api_thread is not None and self.api_thread.is_alive()
 
     def wait_for_services(self, timeout=30):
-        """منتظر ماندن برای آماده‌سازی سرویس‌ها"""
+        """wait to all services ready"""
         logger.info("Waiting for services to start...")
         return self._services_ready.wait(timeout=timeout)
 
@@ -322,13 +322,13 @@ class BlockchainNode:
 
         self._running = False
         logger.info("Shutting down node...")
-        
+
         # Stop P2P network first
         if self.p2p_network is not None:
             self.p2p_network.stop()
             logger.info("P2P network stopped")
-        
+
         # Give services time to shut down
         time.sleep(1)
-        
+
         logger.info("Node shutdown complete")

@@ -8,7 +8,6 @@ MIGRATION_DIR = "data/migrations"
 
 @contextlib.contextmanager
 def db_connection():
-    """مدیریت اتصال به دیتابیس با context manager"""
     conn = sqlite3.connect(DB_FILE)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -19,11 +18,10 @@ def db_connection():
         raise
     finally:
         conn.close()
-        
+
 def init_db():
-    """مقداردهی اولیه دیتابیس و ایجاد جداول"""
     os.makedirs("data", exist_ok=True)
-    
+
     with db_connection() as conn:
         cursor = conn.cursor()
 
@@ -67,7 +65,7 @@ def init_db():
             stake_amount REAL,
             signature TEXT
         );
-        
+
         -- جدول تراکنش‌ها
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,13 +79,13 @@ def init_db():
             signature TEXT,
             FOREIGN KEY (block_id) REFERENCES blocks(id) ON DELETE CASCADE
         );
-        
+
         -- جدول نودهای شبکه
         CREATE TABLE IF NOT EXISTS nodes (
             address TEXT PRIMARY KEY,
             last_seen REAL DEFAULT (strftime('%s', 'now'))
         );
-        
+
        -- جدول ولیدیتورها
         CREATE TABLE IF NOT EXISTS validators (
             address TEXT PRIMARY KEY,
@@ -95,7 +93,7 @@ def init_db():
             stake REAL NOT NULL DEFAULT 0,
             last_active TIMESTAMP
         );
-    
+
          -- جدول سهام‌گذاری
         CREATE TABLE IF NOT EXISTS stakes (
             tx_hash TEXT PRIMARY KEY,
@@ -104,7 +102,7 @@ def init_db():
             block_number INTEGER NOT NULL,
             timestamp TIMESTAMP NOT NULL
         );
-        
+
         -- جدول جدید: حافظه موقت تراکنش‌ها (Mempool)
         CREATE TABLE IF NOT EXISTS mempool (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,7 +115,7 @@ def init_db():
             signature TEXT,
             fee REAL DEFAULT 0
         );
-                             
+
         -- جدول قراردادها
         CREATE TABLE IF NOT EXISTS contracts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,14 +124,14 @@ def init_db():
             creator TEXT NOT NULL,
             created_at REAL NOT NULL
         );
-        
+
         -- جدول وضعیت ذخیره‌سازی قراردادها
         CREATE TABLE IF NOT EXISTS contract_state (
             contract_address TEXT PRIMARY KEY,
             storage TEXT NOT NULL,  -- JSON string of storage
             FOREIGN KEY (contract_address) REFERENCES contracts(address) ON DELETE CASCADE
         );
-        
+
         -- جدول رویدادهای قراردادها
         CREATE TABLE IF NOT EXISTS contract_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,14 +150,14 @@ def init_db():
             refunded INTEGER DEFAULT 0,
             FOREIGN KEY (tx_hash) REFERENCES transactions(tx_hash)
         );
-                             
+
          -- جدول حساب‌ها
         CREATE TABLE IF NOT EXISTS accounts (
             address TEXT PRIMARY KEY,
             public_key_pem TEXT NOT NULL,
             nonce INTEGER DEFAULT 0
         );
-        
+
          -- جدول وضعیت موجودی‌ها
         CREATE TABLE IF NOT EXISTS balances (
             address TEXT PRIMARY KEY,
@@ -170,25 +168,25 @@ def init_db():
             id INTEGER PRIMARY KEY,
             block_data TEXT NOT NULL,
             created_at REAL DEFAULT (strftime('%s', 'now'))
-        );   
-        
+        );
+
         -- ایندکس‌های جدول بلاک‌ها
         CREATE INDEX IF NOT EXISTS idx_blocks_index ON blocks ("index");
         CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks (hash);
         CREATE INDEX IF NOT EXISTS idx_blocks_validator ON blocks (validator);
-        
+
         -- ایندکس‌های جدول تراکنش‌ها
         CREATE INDEX IF NOT EXISTS idx_tx_hash ON transactions (tx_hash);
         CREATE INDEX IF NOT EXISTS idx_tx_sender ON transactions (sender);
         CREATE INDEX IF NOT EXISTS idx_tx_recipient ON transactions (recipient);
         CREATE INDEX IF NOT EXISTS idx_tx_block ON transactions (block_id);
-        
+
         -- ایندکس‌های جدول نودها
         CREATE INDEX IF NOT EXISTS idx_nodes_address ON nodes (address);
-        
+
         -- ایندکس‌های جدول ولیدیتورها
         CREATE INDEX IF NOT EXISTS idx_validators_address ON validators (address);
-        
+
         -- ایندکس‌های جدول Mempool
         CREATE INDEX IF NOT EXISTS idx_mempool_tx_hash ON mempool (tx_hash);
         CREATE INDEX IF NOT EXISTS idx_mempool_sender ON mempool (sender);
@@ -200,10 +198,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_contracts_creator ON contracts (creator);
         CREATE INDEX IF NOT EXISTS idx_contract_state ON contract_state (contract_address);
         CREATE INDEX IF NOT EXISTS idx_contract_events ON contract_events (contract_address, event_name);
-                             
+
         CREATE INDEX IF NOT EXISTS idx_gas_usage_tx ON gas_usage(tx_hash);
         ''')
-        
+
         # ایجاد جدول وضعیت زنجیره (برای ذخیره آخرین حالت)
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS chain_state (
@@ -215,13 +213,13 @@ def init_db():
             last_updated REAL DEFAULT (strftime('%s', 'now')),
             schema_version INTEGER DEFAULT 1  -- ADDED THIS LINE
         )
-        ''') 
-        
+        ''')
+
         # ایجاد رکورد اولیه برای وضعیت زنجیره
         cursor.execute('''
         INSERT OR IGNORE INTO chain_state (id, total_blocks, total_transactions)
         VALUES (1, 0, 0)
         ''')
-        
+
         conn.commit()
         logger.info("Database initialized successfully with all tables and indexes")

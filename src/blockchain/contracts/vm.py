@@ -5,8 +5,6 @@ from src.blockchain.gas_tracker import GasTracker
 from src.blockchain.transaction import Transaction
 
 class SmartContractVM:
-    """ماشین مجازی برای اجرای قراردادهای هوشمند"""
-    
     def __init__(self, state_db):
         self.state_db = state_db
         self.gas_tracker = GasTracker()
@@ -36,16 +34,15 @@ class SmartContractVM:
         'SHA3': 30,
         'REVERT': 0
     }
-    
+
     def __init__(self, state_db):
         self.state_db = state_db
         self.gas_used = 0
         self.output = None
         self.error = None
         self.logs = []
-        
+
     def execute(self, tx: 'Transaction', block_number: int, timestamp: float) -> Tuple[bool, Any]:
-        """اجرای یک تراکنش قرارداد هوشمند"""
         self.gas_used = 0
         self.output = None
         self.error = None
@@ -54,7 +51,7 @@ class SmartContractVM:
 
         import resource
         resource.setrlimit(resource.RLIMIT_AS, (100 * 1024 * 1024 , 100 * 1024 * 1024))  # تنظیم محدودیت حافظه
-        
+
         import signal
         signal.alarm(5)
 
@@ -66,34 +63,30 @@ class SmartContractVM:
                 'timestamp': timestamp,
                 'input': tx.contract_args,
                 'storage': {},
-                'memory': {},  # حافظه موقت برای اجرای قرارداد
+                'memory': {},
                 'balance': self._get_balance(tx.sender),
                 'code': tx.contract_code if tx.contract_type == "CREATE" else self._load_contract_code(tx.contract_address)
             }
-            
-            # بارگذاری وضعیت ذخیره‌سازی
+
             if tx.contract_type == "CALL":
                 context['storage'] = self._load_storage(tx.contract_address)
-            
-            # اجرای دستورات
+
             instructions = context['code'].split(';') if context['code'] else []
             for instruction in instructions:
                 if self.gas_remaining <= 0:
                     raise RuntimeError("Out of gas")
-                
+
                 parts = instruction.strip().split()
                 if not parts:
                     continue
-                    
+
                 opcode = parts[0].upper()
                 params = parts[1:]
-                
-                # بررسی هزینه گاز
+
                 gas_cost = self.GAS_COSTS.get(opcode, 10)
                 if gas_cost > self.gas_remaining:
                     raise RuntimeError(f"Out of gas (needed: {gas_cost}, has {self.gas_remaining})")
 
-                # اجرای دستور
                 if opcode == 'ADD':
                     self._op_add(context, params)
                 elif opcode == 'SUB':
@@ -142,31 +135,28 @@ class SmartContractVM:
                     self._op_log(context, params)
                 else:
                     raise RuntimeError(f"Unknown opcode: {opcode}")
-                
+
                 self.gas_remaining -= gas_cost
-            
-            # ذخیره وضعیت برای قراردادهای جدید
+
             if tx.contract_type == "CREATE":
                 contract_address = self._create_contract_address(tx)
                 self._save_contract(contract_address, context['code'], tx.sender)
                 self.output = contract_address
-            
-            # ذخیره وضعیت ذخیره‌سازی
+
             if tx.contract_type == "CALL":
                 self._save_storage(tx.contract_address, context['storage'])
-            
+
             result = self._execute(context, tx)
 
             return True, result
-        
+
         except Exception as e:
             self.error = str(e)
             logger.error(f"Contract execution failed: {self.error}")
             return False, self.error
         finally:
-            signal.alarm(0)  # خاموش کردن تایمر
+            signal.alarm(0)
 
-    # دستورات ماشین مجازی
     def _op_add(self, context, params):
         if len(params) < 3:
             raise RuntimeError("ADD requires 3 parameters")
@@ -224,7 +214,6 @@ class SmartContractVM:
     def _op_jump(self, context, params):
         if len(params) < 1:
             raise RuntimeError("JUMP requires line number")
-        # در این پیاده‌سازی ساده، پرش انجام نمی‌شود
         logger.warning("JUMP opcode not implemented")
 
     def _op_jumpi(self, context, params):
@@ -232,7 +221,6 @@ class SmartContractVM:
             raise RuntimeError("JUMPI requires line number and condition")
         condition = self._get_value(context, params[1])
         if condition:
-            # در این پیاده‌سازی ساده، پرش انجام نمی‌شود
             logger.warning("JUMPI opcode not implemented")
 
     def _op_sstore(self, context, params):
@@ -262,14 +250,14 @@ class SmartContractVM:
             raise RuntimeError("TRANSFER requires 2 parameters")
         recipient = params[0]
         amount = self._get_value(context, params[1])
-        
+
         if context['balance'] < amount:
             raise RuntimeError("Insufficient balance")
-        
+
         context['balance'] -= amount
         self._update_balance(context['sender'], context['balance'])
         self._add_balance(recipient, amount)
-    
+
     def _op_eq(self, context, params):
         if len(params) < 3:
             raise RuntimeError("EQ requires 3 parameters")
@@ -345,7 +333,7 @@ class SmartContractVM:
         if len(params) < 1:
             raise RuntimeError("JUMP requires line number")
         line_num = int(params[0])
-        context['pc'] = line_num  # تنظیم شمارنده برنامه
+        context['pc'] = line_num
 
     def _op_jumpi(self, context, params):
         if len(params) < 2:
@@ -355,45 +343,38 @@ class SmartContractVM:
             line_num = int(params[0])
             context['pc'] = line_num
 
-    # توابع کمکی
     def _get_value(self, context, value_str):
-        """ارزش را از ذخیره‌سازی یا به صورت مستقیم برمی‌گرداند"""
-        # ابتدا بررسی می‌کنیم آیا مقدار یک عدد است
         if value_str.isdigit() or (value_str[0] == '-' and value_str[1:].isdigit()):
             return int(value_str)
-        
-        # سپس بررسی می‌کنیم آیا در حافظه موقت وجود دارد
+
         if value_str in context['memory']:
             return context['memory'][value_str]
-        
-        # سپس بررسی می‌کنیم آیا در ذخیره‌سازی وجود دارد
+
         if value_str in context['storage']:
             return context['storage'][value_str]
-        
-        # در نهایت، اگر متغیر تعریف نشده بود خطا می‌دهیم
+
         raise RuntimeError(f"Undefined variable: {value_str}")
 
     def _create_contract_address(self, tx):
-        """ایجاد آدرس قرارداد از هش تراکنش"""
         return hashlib.sha256(f"{tx.sender}{tx.tx_hash}".encode()).hexdigest()[:40]
 
     def _load_contract_code(self, contract_address):
         return self.state_db.load_contract_code(contract_address)
-    
+
     def _save_contract(self, address, code, creator):
         self.state_db.save_contract(address, code, creator)
-    
+
     def _load_storage(self, contract_address):
         return self.state_db.load_storage(contract_address)
-    
+
     def _save_storage(self, contract_address, storage):
         self.state_db.save_storage(contract_address, storage)
-    
+
     def _get_balance(self, address):
         return self.state_db.get_balance(address)
-    
+
     def _update_balance(self, address, new_balance):
         self.state_db.update_balance(address, new_balance)
-    
+
     def _add_balance(self, address, amount):
         self.state_db.add_balance(address, amount)

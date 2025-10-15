@@ -14,8 +14,8 @@ class BlockRepository:
             try:
                 cursor.execute('''
                 INSERT INTO blocks (
-                    "index", timestamp, previous_hash, 
-                    hash, nonce, difficulty, 
+                    "index", timestamp, previous_hash,
+                    hash, nonce, difficulty,
                     validator, stake_amount, signature
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
@@ -41,19 +41,19 @@ class BlockRepository:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM blocks WHERE "index" = ?', (index,))
             row = cursor.fetchone()
-            
+
             if not row:
                 return None
-            
+
             # Get column names to handle schema changes
             cursor.execute("PRAGMA table_info(blocks)")
             columns = [col[1] for col in cursor.fetchall()]
-            
+
             # Map columns to values
             row_dict = dict(zip(columns, row))
-            
+
             transactions = TransactionRepository.get_transactions_by_block_id(row_dict['id'])
-            
+
             block = Block(
                 index=row_dict['index'],
                 timestamp=row_dict['timestamp'],
@@ -67,19 +67,18 @@ class BlockRepository:
             )
             block.hash = row_dict['hash']
             return block
-            
+
     @staticmethod
     def get_blocks_paginated(page: int = 1, per_page: int = 10) -> List[Block]:
-        """بازیابی بلاک‌ها به صورت صفحه‌بندی شده"""
         offset = (page - 1) * per_page
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-            SELECT * FROM blocks 
-            ORDER BY "index" DESC 
+            SELECT * FROM blocks
+            ORDER BY "index" DESC
             LIMIT ? OFFSET ?
             ''', (per_page, offset))
-            
+
             blocks = []
             for row in cursor.fetchall():
                 transactions = TransactionRepository.get_transactions_by_block_id(row[0])
@@ -93,18 +92,16 @@ class BlockRepository:
                     difficulty=row[6]
                 ))
             return blocks
-    
+
     @staticmethod
     def get_block_count() -> int:
-        """تعداد بلاک‌های ذخیره شده"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT COUNT(*) FROM blocks')
             return cursor.fetchone()[0]
 
 class TransactionRepository:
-    """ذخیره و بازیابی تراکنش‌ها از دیتابیس"""
-    
+
     @staticmethod
     def save_transaction(transaction: Transaction, block_id: int) -> int:
         """ذخیره تراکنش در دیتابیس"""
@@ -113,7 +110,7 @@ class TransactionRepository:
             try:
                 cursor.execute('''
                 INSERT INTO transactions (
-                    block_id, tx_hash, sender, recipient, 
+                    block_id, tx_hash, sender, recipient,
                     amount, data, timestamp, signature
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
@@ -135,13 +132,12 @@ class TransactionRepository:
 
     @staticmethod
     def save_transactions_bulk(transactions: List[Transaction], block_id: int) -> None:
-        """ذخیره دسته‌ای تراکنش‌ها"""
         with db_connection() as conn:
             cursor = conn.cursor()
             try:
                 cursor.executemany('''
                 INSERT OR IGNORE INTO transactions (
-                    block_id, tx_hash, sender, recipient, 
+                    block_id, tx_hash, sender, recipient,
                     amount, data, timestamp, signature
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', [
@@ -163,11 +159,10 @@ class TransactionRepository:
 
     @staticmethod
     def get_transactions_by_block_id(block_id: int) -> List[Transaction]:
-        """بازیابی تمام تراکنش‌های یک بلاک"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM transactions WHERE block_id = ?', (block_id,))
-            
+
             transactions = []
             for row in cursor.fetchall():
                 tx = Transaction(
@@ -178,7 +173,6 @@ class TransactionRepository:
                     timestamp=row[7],
                     signature=row[8]
                 )
-                # بررسی تطابق هش
                 if tx.tx_hash != row[2]:
                     logger.warning(f"Transaction hash mismatch for tx {row[0]}")
                     continue
@@ -187,15 +181,14 @@ class TransactionRepository:
 
     @staticmethod
     def get_transaction_by_hash(tx_hash: str) -> Optional[Transaction]:
-        """بازیابی تراکنش بر اساس هش"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM transactions WHERE tx_hash = ?', (tx_hash,))
             row = cursor.fetchone()
-            
+
             if not row:
                 return None
-                
+
             return Transaction(
                 sender=row[3],
                 recipient=row[4],

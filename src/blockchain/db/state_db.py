@@ -4,15 +4,12 @@ from trie import HexaryTrie
 from src.utils.database import db_connection
 
 class StateDB:
-    """پیاده‌سازی StateDB برای قراردادهای هوشمند"""
-    
     def __init__(self):
         self.trie = HexaryTrie(db={})
         self.cache = {}
         self.nonce_prefix = b"nonce_"
 
     def create_account(self, address: str, public_key_pem: str = "", nonce: int = 0):
-        """Create a new account in the database"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -26,7 +23,7 @@ class StateDB:
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'SELECT address, public_key_pem, nonce FROM accounts WHERE address = ?', 
+                'SELECT address, public_key_pem, nonce FROM accounts WHERE address = ?',
                 (address,)
             )
             row = cursor.fetchone()
@@ -37,17 +34,17 @@ class StateDB:
                     'nonce': row[2]
                 }
             return None
-    
+
     def update_account(self, address: str, public_key_pem: str = None, nonce: int = None):
         """Update account information without overwriting public key"""
         account = self.get_account(address) or {}
-        
+
         # Use existing values if not provided
         if public_key_pem is None:
             public_key_pem = account.get('public_key_pem', "")
         if nonce is None:
             nonce = account.get('nonce', 0)
-        
+
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -57,7 +54,6 @@ class StateDB:
             conn.commit()
 
     def load_contract_code(self, contract_address):
-        """بارگذاری کد قرارداد از دیتابیس"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT code FROM contracts WHERE address = ?', (contract_address,))
@@ -65,7 +61,6 @@ class StateDB:
             return row[0] if row else None
 
     def save_contract(self, address, code, creator):
-        """ذخیره قرارداد جدید در دیتابیس"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -75,7 +70,6 @@ class StateDB:
             conn.commit()
 
     def load_storage(self, contract_address):
-        """بارگذاری وضعیت ذخیره‌سازی قرارداد"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT storage FROM contract_state WHERE contract_address = ?', (contract_address,))
@@ -83,7 +77,6 @@ class StateDB:
             return json.loads(row[0]) if row else {}
 
     def save_storage(self, contract_address, storage):
-        """ذخیره وضعیت ذخیره‌سازی قرارداد"""
         with db_connection() as conn:
             cursor = conn.cursor()
             storage_json = json.dumps(storage)
@@ -139,11 +132,11 @@ class StateDB:
         Returns:
             int: nonce
         """
-        
+
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'SELECT nonce FROM accounts WHERE address = ?', 
+                'SELECT nonce FROM accounts WHERE address = ?',
                 (address,)
             )
             row = cursor.fetchone()
@@ -156,7 +149,7 @@ class StateDB:
 
             # FIX: Changed 'none' to 'nonce'
             cursor.execute(
-                'SELECT nonce FROM accounts WHERE address = ?', 
+                'SELECT nonce FROM accounts WHERE address = ?',
                 (address,)
             )
             row = cursor.fetchone()
@@ -182,13 +175,13 @@ class StateDB:
             cursor.execute("DELETE FROM accounts WHERE address != '0x0000000000000000000000000000000000000000'")
             cursor.execute("DELETE FROM balances")
             cursor.execute("UPDATE accounts SET nonce = 0 WHERE address = '0x0000000000000000000000000000000000000000'")
-        
+
             conn.commit()
 
     def get_vex_balance(self, address: str) -> float:
         """Get VEX balance for an address"""
         return self.get_balance(address)
-    
+
     def update_vex_balance(self, address: str, amount: float):
         """Update VEX balance for an address"""
         self.update_balance(address, amount)

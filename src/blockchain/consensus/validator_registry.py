@@ -7,15 +7,13 @@ from src.utils.crypto import address_from_public_key
 from src.utils.logger import logger
 
 class ValidatorRegistry:
-    """مدیریت ثبت و احراز هویت ولیدیتورها"""
-    
     @staticmethod
     def register_validator(address: str, public_key_pem: str, stake: float):
         """Unified validator registration"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO validators 
+                INSERT OR REPLACE INTO validators
                 (address, public_key_pem, stake, last_active)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ''', (address, public_key_pem, stake))
@@ -23,7 +21,6 @@ class ValidatorRegistry:
 
     @staticmethod
     def get_validator_stake(address: str) -> float:
-        """دریافت مقدار سهام یک ولیدیتور"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT stake FROM validators WHERE address = ?', (address,))
@@ -32,18 +29,17 @@ class ValidatorRegistry:
 
     @staticmethod
     def get_active_validators() -> Dict[str, float]:
-        """دریافت لیست ولیدیتورهای فعال و سهام آنها"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT address, stake FROM validators 
+                SELECT address, stake FROM validators
                 WHERE stake > 0 AND last_active > datetime('now', '-1 day')
             ''')
             validators = {row[0]: row[1] for row in cursor.fetchall()}
-            
+
             if not validators:
                 logger.warning("No active validators found in database")
-                
+
             return validators
 
     @staticmethod
@@ -63,17 +59,16 @@ class ValidatorRegistry:
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ).decode('utf-8')
         return address_from_public_key(public_key_pem)
-    
+
     @staticmethod
     def get_public_key_pem(address: str) -> Optional[str]:
-        """دریافت کلید عمومی ولیدیتور از آدرس"""
         with db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT public_key_pem FROM accounts WHERE address = ?', (address,))
             row = cursor.fetchone()
             if row:
                 return row[0]
-            
+
             cursor.execute('SELECT public_key_pem FROM validators WHERE address = ?', (address,))
             row = cursor.fetchone()
             return row[0] if row else None
@@ -82,7 +77,7 @@ class ValidatorRegistry:
 #    def select_validator():
 #        from src.blockchain.consensus.stake_manager import StakeManager
 #        validators = StakeManager.get_active_validators()
-#        
+#
 #        if not validators:
 #            logger.error("No active validators available")
 #            return None

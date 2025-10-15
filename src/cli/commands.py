@@ -75,38 +75,38 @@ class CommandExecutor:
             if not accounts:
                 print("❌ No accounts available")
                 return
-                
+
             print("Available accounts:")
             for i, (name, acc) in enumerate(accounts.items(), 1):
                 print(f"{i}. {name} ({acc['address'][:12]}...)")
-                
+
             choice = input("Select account: ")
             if not choice.isdigit() or int(choice) > len(accounts):
                 print("❌ Invalid selection")
                 return
-                
+
             account_name = list(accounts.keys())[int(choice)-1]
             account = accounts[account_name]
-            
+
             # Get staking amount
             amount = float(input("Amount to stake: "))
-            
+
             # Get private key and public key
             private_key = account.get('private_key')
             public_key = account.get('public_key')
             address = account.get('address')
-            
+
             if not private_key or not public_key:
                 print("❌ Private key or public key not available for this account")
                 return
-                
+
             # Stake coins - call static method directly
             tx_hash = StakeManager.stake(
                 address=address,
                 amount=amount,
                 public_key_pem=public_key,
             )
-            
+
             if tx_hash:
                 print(f"✅ Staked {amount} coins. TX Hash: {tx_hash[:10]}...")
                 print(f"   Validator address: {address}")
@@ -120,12 +120,12 @@ class CommandExecutor:
         try:
             address = prompt_address("Your address")
             amount = prompt_amount("Amount to unstake")
-            
+
             if StakeManager.unstake(address, amount):
                 print_success(f"Successfully unstaked {amount} coins")
             else:
                 print_error("Unstaking failed (insufficient stake?)")
-                
+
         except Exception as e:
             print_error(f"Unstaking failed: {str(e)}")
 
@@ -152,7 +152,7 @@ class CommandExecutor:
                     'private_key': account.get('private_key'),
                     'name': account_name
                 })
-        
+
         if not my_validators:
             print_error("No validators found in your wallet with stake")
             print_info("Please stake coins with one of your accounts first")
@@ -183,9 +183,9 @@ class CommandExecutor:
             if not selected_validator:
                 print_error("Validator selection failed")
                 return
-                
+
             print_info(f"Selected validator: {selected_validator['name']} ({selected_validator['address'][:10]}...)")
-            
+
             # Load private key
             private_key_pem = selected_validator['private_key']
             if not private_key_pem:
@@ -200,7 +200,7 @@ class CommandExecutor:
 
             # Create new block
             last_block = self.node.blockchain.get_last_block()
-            
+
             new_block = Block(
                 index=last_block.index + 1,
                 timestamp=int(time.time()),
@@ -210,33 +210,33 @@ class CommandExecutor:
                 stake_amount=selected_validator['stake'],
                 difficulty=self.node.blockchain.difficulty
             )
-            
+
             # Sign the block
             new_block.sign_block(private_key, new_block.stake_amount)
-            
+
             # Add block to blockchain
             added_block = self.node.blockchain.add_block(
                 block=new_block,
                 external_block=None,
                 selected_validator_address=selected_validator['address']
             )
-            
+
             if added_block:
                 print_success(f"✅ Block #{added_block.index} mined successfully!")
                 print_info(f"   Validator: {added_block.validator}")
                 print_info(f"   Transactions: {len(added_block.transactions)}")
                 print_info(f"   Hash: {added_block.hash[:16]}...")
-                
+
                 # Remove mined transactions from mempool
                 tx_hashes = [tx.tx_hash for tx in transactions]
                 self.node.mempool.remove_transactions(tx_hashes)
-                
+
                 # Distribute rewards
                 StakeManager.distribute_rewards(added_block)
                 print_info(f"   Rewards distributed to validator")
             else:
                 print_error("Block mining failed")
-                
+
         except Exception as e:
             print_error(f"Mining error: {str(e)}")
             import traceback
@@ -252,10 +252,10 @@ class CommandExecutor:
             sender = prompt_address("Sender address")
             print("\nEnter contract code (type 'END' on new line to finish):")
             code = prompt_contract_code()
-            
+
             contract_address = ContractManager.deploy_contract(sender, code)
             print_success(f"Contract deployed at: {contract_address}")
-            
+
         except Exception as e:
             print_error(f"Contract deployment failed: {str(e)}")
 
@@ -267,7 +267,7 @@ class CommandExecutor:
             method = prompt_method_name()
             args = prompt_contract_call()
             amount = prompt_amount("Amount to send (0 for none)")
-            
+
             tx = ContractManager.call_contract(
                 sender,
                 contract_address,
@@ -275,12 +275,12 @@ class CommandExecutor:
                 args,
                 amount
             )
-            
+
             if self.node.mempool.add_transaction(tx):
                 print_success(f"Contract call transaction added: {tx.tx_hash[:10]}...")
             else:
                 print_error("Failed to add transaction to mempool")
-                
+
         except Exception as e:
             print_error(f"Contract call failed: {str(e)}")
 
@@ -290,7 +290,7 @@ class CommandExecutor:
             contract_address = prompt_contract_address()
             state = ContractManager.get_contract_state(contract_address)
             display_contract_state(contract_address, state)
-            
+
         except Exception as e:
             print_error(f"Failed to view contract: {str(e)}")
 
@@ -301,7 +301,7 @@ class CommandExecutor:
             self.node.p2p_network.sync_blockchain()
             self.node.p2p_network.sync_mempool()
             print_success("Synchronization completed")
-            
+
         except Exception as e:
             print_error(f"Synchronization failed: {str(e)}")
 
@@ -313,20 +313,20 @@ class CommandExecutor:
             if not accounts:
                 print(f"{self.theme.ERROR}❌ No accounts available{self.theme.RESET}")
                 return
-                
+
             print(f"{self.theme.INFO}Available accounts:{self.theme.RESET}")
             for i, (name, acc) in enumerate(accounts, 1):
                 print(f"{i}. {name} ({acc['address'][:12]}...)")
-                
+
             # Get account
             choice = int(input(f"{self.theme.PROMPT}Select account: {self.theme.INPUT}")) - 1
             account = accounts[choice][1]
-            
+
             # Get transaction details
             recipient = prompt_address("Recipient address")
             amount = prompt_amount("Amount")
             data = prompt_json_data("Additional data (JSON)")
-            
+
             # Create transaction
             tx = Transaction(
                 sender=account['address'],
@@ -334,7 +334,7 @@ class CommandExecutor:
                 amount=amount,
                 data=data
             )
-            
+
             # Sign transaction
             private_key_pem = account['private_key']
             if private_key_pem:
@@ -344,17 +344,17 @@ class CommandExecutor:
                     password=None
                 )
                 tx.sign(private_key)
-                
+
                 if self.node.mempool.add_transaction(tx):
                     print(f"{self.theme.SUCCESS}✅ Transaction added! Hash: {tx.tx_hash[:10]}...{self.theme.RESET}")
                 else:
                     print(f"{self.theme.ERROR}❌ Failed to add transaction{self.theme.RESET}")
             else:
                 print(f"{self.theme.ERROR}❌ No private key available{self.theme.RESET}")
-                
+
         except Exception as e:
             print(f"{self.theme.ERROR}❌ Error: {str(e)}{self.theme.RESET}")
-            
+
     def create_contract_transaction(self):
         """Create smart contract transaction"""
         sender = prompt_address("Sender address")
@@ -362,7 +362,7 @@ class CommandExecutor:
         method = prompt_method_name()
         args = prompt_contract_call()
         amount = prompt_amount("Amount to send")
-        
+
         tx = ContractTransaction(
             sender=sender,
             contract_address=contract_address,
@@ -370,7 +370,7 @@ class CommandExecutor:
             args=args,
             amount=amount
         ).sign(self.node.wallet.get_private_key())
-        
+
         if self.node.mempool.add_transaction(tx):
             print_success(f"Contract transaction added! Hash: {tx.tx_hash[:10]}...")
         else:
@@ -398,11 +398,11 @@ class CommandExecutor:
         if not peers:
             print_warning("No peers to disconnect")
             return
-            
+
         print("Connected peers:")
         for i, (host, port) in enumerate(peers, 1):
             print(f"{i}. {host}:{port}")
-            
+
         choice = int(input("Select peer to disconnect: ")) - 1
         peer = peers[choice]
         self.node.p2p_network.peers.remove(peer)
@@ -412,11 +412,11 @@ class CommandExecutor:
         """View contract events"""
         contract_address = prompt_contract_address()
         events = ContractManager.get_contract_events(contract_address)
-        
+
         if not events:
             print_info("No events found for this contract")
             return
-            
+
         print(f"\nEvents for contract {contract_address[:10]}...:\n")
         for event in events:
             print(f"📢 {event['event_name']}")
@@ -430,13 +430,13 @@ class CommandExecutor:
             "2": ("Minimum stake amount", self._set_min_stake),
             "3": ("Block interval", self._set_block_interval)
         }
-        
+
         while True:
             print("\nAdvanced Node Settings:")
             for key, (label, _) in settings.items():
                 print(f"{key}. {label}")
             print("0. Back")
-            
+
             choice = input("Select: ").strip()
             if choice == "0":
                 break
@@ -459,17 +459,17 @@ class CommandExecutor:
         seconds = int(input("Time between blocks (seconds): "))
         Consensus.BLOCK_INTERVAL = seconds
         print_success(f"Block interval set to {seconds} seconds")
-    
+
     def deploy_contract(self):
         """Handle contract deployment"""
         try:
             sender = prompt_address("Sender address")
             print("\nEnter contract code (type 'END' on new line to finish):")
             code = prompt_contract_code()
-        
+
             contract_address = ContractManager.deploy_contract(sender, code)
             print_success(f"Contract deployed at: {contract_address}")
-        
+
         except Exception as e:
             print_error(f"Contract deployment failed: {str(e)}")
 
@@ -481,7 +481,7 @@ class CommandExecutor:
             method = prompt_method_name()
             args = prompt_contract_call()
             amount = prompt_amount("Amount to send (0 for none)")
-        
+
             # Create contract transaction
             tx = ContractTransaction(
                 sender=sender,
@@ -492,12 +492,12 @@ class CommandExecutor:
                 method=method,
                 args=args
             ).sign(self.node.wallet.get_private_key())
-        
+
             if self.node.mempool.add_transaction(tx):
                 print_success(f"Contract call transaction added: {tx.tx_hash[:10]}...")
             else:
                 print_error("Failed to add transaction to mempool")
-            
+
         except Exception as e:
             print_error(f"Contract call failed: {str(e)}")
 
@@ -516,45 +516,43 @@ class CommandExecutor:
         if not account_name:
             print_error("Account name cannot be empty")
             return
-            
+
         address = self.node.wallet.create_account(account_name)
         print_success(f"Account created successfully! Address: {address}")
 
     def _create_test_validator(self):
-        """ایجاد ولیدیتور تست برای demo"""
         try:
             from cryptography.hazmat.primitives import serialization
-            
+
             validator_key = ec.generate_private_key(ec.SECP256K1())
             public_key_pem = validator_key.public_key().public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).decode()
-            
+
             validator_address = ValidatorRegistry.get_validator_address(validator_key)
-            
+
             ValidatorRegistry.register_validator(
                 address=validator_address,
                 public_key_pem=public_key_pem,
-                stake=10000  # stake بالا برای تست
+                stake=10000
             )
             print_success(f"Test validator created: {validator_address}")
-            
+
         except Exception as e:
             print_error(f"Failed to create test validator: {e}")
 
     def _create_test_transaction(self):
-        """ایجاد تراکنش تست"""
         try:
             from src.blockchain.transaction import Transaction
-            
+
             test_tx = Transaction(
                 sender="0x1234567890123456789012345678901234567890",
                 recipient="0x0987654321098765432109876543210987654321",
                 amount=10.0,
                 data={"type": "test", "message": "Test transaction for mining"}
             )
-            
+
             self.node.mempool.add_transaction(test_tx)
             print_success("Test transaction created")
 
