@@ -46,13 +46,13 @@ VEX utilizes a novel Proof-of-Stake implementation with the following characteri
 ## 3. Native Token (VEX)
 
 ### 3.1 Tokenomics
-- **Total Supply**: 20,000,000 VEX (fixed supply)
+- **Total Supply**: 80,000,000 VEX
 - **Decimals**: 18
 - **Block Reward**: 50 VEX per block (subject to governance)
 - **Initial Distribution**:
-  - Foundation: 20% (4,000,000 VEX)
-  - Ecosystem Development: 30% (6,000,000 VEX)
-  - Public Sale: 50% (10,000,000 VEX)
+  - Foundation: 20%
+  - Ecosystem Development: 30%
+  - Public Sale: 50%
 
 ### 3.2 Token Utility
 VEX serves multiple functions within the ecosystem:
